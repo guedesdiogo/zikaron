@@ -1,5 +1,6 @@
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
+import { MemoryIndex } from "@zikaron/memory";
 import { FakeVaultBackend } from "@zikaron/vault/fake";
 import { describe, expect, it } from "vitest";
 import { replaceBackendForTesting } from "../src/index.ts";
@@ -127,5 +128,37 @@ describe("Vault provenance", () => {
     await runDurableObjectAlarm(stub);
     expect(await rows(stub, "SELECT count(*) AS n FROM authored")).toEqual([{ n: 0 }]);
     expect(await stub.read("memory/notes/a.md")).toBeNull();
+  });
+
+  it("o índice sabe o que o servidor escreveu, e uma edição do dono volta a ser do dono", async () => {
+    const backend = vaultWith({});
+    const stub = vault("provenance-index");
+    await stub.read("README.md");
+    const path = "memory/notes/cafe.md";
+    await stub.write(
+      "alfa",
+      [
+        {
+          path,
+          content:
+            "---\norigin:\n  client: alfa\n  channel: tool\n  source: agent\n---\n\n# Café\n\nSem açúcar.\n",
+        },
+      ],
+      "x",
+    );
+    await runDurableObjectAlarm(stub);
+    const trust = () =>
+      runInDurableObject(stub, (_instance, state) =>
+        new MemoryIndex(state.storage).trust(path, {
+          client: "beta",
+          mode: "privileged",
+          exposed: ["alfa"],
+          ownerClaims: [],
+        }),
+      );
+    expect(await trust()).toEqual({ ownerGrade: false, tainted: true });
+    backend.push({ [path]: "# Café\n\nSem açúcar, confirmado.\n" });
+    await runDurableObjectAlarm(stub);
+    expect(await trust()).toEqual({ ownerGrade: true, tainted: false });
   });
 });

@@ -8,6 +8,7 @@ import type { LinkBy, LinkKind } from "./markdown.ts";
 import { type Level, readNote, type Status } from "./note.ts";
 import type { Channel, Origin, Source } from "./origin.ts";
 import { instantOf } from "./time.ts";
+import { ownerGradeSql, type ReaderPolicy, taintedSql, visibleSql } from "./visibility.ts";
 
 export type SqlValue = ArrayBuffer | string | number | null;
 
@@ -106,6 +107,8 @@ export interface SearchOptions {
   notExpiredAt?: number;
   /** Archived notes are left out unless asked for directly (#6). */
   includeArchived?: boolean;
+  /** Only the versions this reader may see (ADR-0001 §5); every version when left out. */
+  reader?: ReaderPolicy;
 }
 
 export interface SearchHit {
@@ -250,6 +253,9 @@ CREATE TABLE IF NOT EXISTS embeddings (
   vector BLOB NOT NULL,
   PRIMARY KEY (blob_sha, model)
 ) WITHOUT ROWID;
+-- The blobs the server wrote (ADR-0001 §2): what tells its versions from the owner's. Kept across
+-- a rebuild, as the server's record of its own commits is.
+CREATE TABLE IF NOT EXISTS authored_blobs (blob_sha TEXT PRIMARY KEY NOT NULL) WITHOUT ROWID;
 `;
 
 /** The path's words for full-text search, without `.md`: the tokenizer splits `-` and `_`. */
@@ -330,6 +336,11 @@ function versionFilter(options: SearchOptions, includeMerged = false): [string, 
         "NOT EXISTS (SELECT 1 FROM versions c WHERE c.path = v.path AND c.is_current = 1 AND c.archived = 1)",
       );
     }
+  }
+  if (options.reader !== undefined) {
+    const [visible, visibleBindings] = visibleSql(options.reader);
+    filters.push(visible);
+    bindings.push(...visibleBindings);
   }
   if (!includeMerged) filters.push(NOT_MERGED);
   return [filters.join(" AND "), bindings];
@@ -649,12 +660,47 @@ export class MemoryIndex {
     return row === undefined ? null : { sha: row.sha, committedAt: row.committed_at };
   }
 
-  current(path: string): IndexedVersion | null {
+  /**
+   * A path's current version, archived or merged or not. With `reader`, null when the reader may
+   * not see it, the same answer as a path with no note (ADR-0001 §5).
+   */
+  current(path: string, options: { reader?: ReaderPolicy } = {}): IndexedVersion | null {
+    const [visible, bindings] =
+      options.reader === undefined ? ["1", []] : visibleSql(options.reader);
     const row = this.#exec<VersionRow>(
-      `SELECT ${VERSION_COLUMNS} FROM versions v WHERE v.path = ? AND v.is_current = 1`,
+      `SELECT ${VERSION_COLUMNS} FROM versions v WHERE v.path = ? AND v.is_current = 1 AND ${visible}`,
       path,
+      ...bindings,
     )[0];
     return row === undefined ? null : toVersion(row);
+  }
+
+  /**
+   * How far a path's current version is trusted under the clients' settings in `policy` (ADR-0001
+   * §3 and §5), whoever reads: whether it counts as the owner's, and whether it is tainted. Null
+   * when no note is at the path. The writer's rules read it before a new version (ADR-0001 §4).
+   */
+  trust(path: string, policy: ReaderPolicy): { ownerGrade: boolean; tainted: boolean } | null {
+    const [owner, ownerBindings] = ownerGradeSql(policy);
+    const [tainted, taintedBindings] = taintedSql(policy);
+    const row = this.#exec<{ owner: number; tainted: number }>(
+      `SELECT coalesce(${owner}, 0) AS owner, coalesce(${tainted}, 0) AS tainted
+       FROM versions v WHERE v.path = ? AND v.is_current = 1`,
+      ...ownerBindings,
+      ...taintedBindings,
+      path,
+    )[0];
+    return row === undefined ? null : { ownerGrade: row.owner === 1, tainted: row.tainted === 1 };
+  }
+
+  /**
+   * Records blobs the server wrote, so their versions are told from the owner's (ADR-0001 §2). It
+   * opens no transaction of its own, so the writer can call it inside the one that records them.
+   */
+  markAuthored(blobShas: readonly string[]): void {
+    for (const blobSha of blobShas) {
+      this.#exec("INSERT OR IGNORE INTO authored_blobs (blob_sha) VALUES (?)", blobSha);
+    }
   }
 
   /** Every version written at a path, oldest first, the current one last. */
@@ -941,11 +987,13 @@ export class MemoryIndex {
       notExpiredAt?: number;
       scopes?: readonly Scope[];
       includeArchived?: boolean;
+      reader?: ReaderPolicy;
     } = {},
   ): SearchHit[] {
     const scoped = {
       ...(options.scopes === undefined ? {} : { scopes: options.scopes }),
       ...(options.includeArchived ? { includeArchived: true } : {}),
+      ...(options.reader === undefined ? {} : { reader: options.reader }),
     };
     const [inScopes, scopeBindings] = versionFilter(scoped);
     const exists = this.#exec(
@@ -1022,13 +1070,15 @@ export class MemoryIndex {
     from: string,
     by: LinkBy,
     target: string,
-    options: { scopes?: readonly Scope[] } = {},
+    options: { scopes?: readonly Scope[]; reader?: ReaderPolicy } = {},
   ): string | null {
-    // A link names a file, as in Obsidian, merged into another or archived (#6) or not.
+    // A link names a file, as in Obsidian, merged into another or archived (#6) or not. A note the
+    // reader may not see can't take it, as one outside the scopes can't (ADR-0001 §5).
     const [filter, bindings] = versionFilter(
       {
         includeArchived: true,
         ...(options.scopes === undefined ? {} : { scopes: options.scopes }),
+        ...(options.reader === undefined ? {} : { reader: options.reader }),
       },
       true,
     );
@@ -1084,7 +1134,10 @@ export class MemoryIndex {
    * The current version's links, each resolved against the current vault, or among the notes in
    * `scopes` when given.
    */
-  links(path: string, options: { scopes?: readonly Scope[] } = {}): ResolvedLink[] {
+  links(
+    path: string,
+    options: { scopes?: readonly Scope[]; reader?: ReaderPolicy } = {},
+  ): ResolvedLink[] {
     return this.#exec<{ kind: string; by: string; target: string }>(
       `SELECT l.kind, l.by, l.target FROM links l JOIN versions v ON v.rowid = l.version
        WHERE v.path = ? AND v.is_current = 1 ORDER BY l.kind, l.by, l.target`,
@@ -1098,18 +1151,22 @@ export class MemoryIndex {
   }
 
   /** Current notes whose links resolve to this path. */
-  backlinks(path: string): string[] {
+  backlinks(path: string, options: { reader?: ReaderPolicy } = {}): string[] {
     const { linkPath, linkName } = linkKeys(path);
+    const [visible, bindings] =
+      options.reader === undefined ? ["1", []] : visibleSql(options.reader);
     const rows = this.#exec<{ path: string; by: string; target: string }>(
       `SELECT DISTINCT v.path, l.by, l.target FROM links l JOIN versions v ON v.rowid = l.version
        WHERE v.is_current = 1
          AND ((l.by = 'path' AND l.target = ?) OR (l.by = 'name' AND l.target = ?))
+         AND ${visible}
        ORDER BY v.path`,
       linkPath,
       linkName,
+      ...bindings,
     );
     const sources = rows
-      .filter((row) => this.resolve(row.path, row.by as LinkBy, row.target) === path)
+      .filter((row) => this.resolve(row.path, row.by as LinkBy, row.target, options) === path)
       .map((row) => row.path);
     return [...new Set(sources)];
   }
