@@ -661,6 +661,33 @@ A linha só leva vocabulário fechado e o nome do cliente; a evidência, texto l
 - **Uma nova versão leva o que a anterior tinha:** como `pinned` e `evergreen`, quem grava por cima de uma nota lê a versão atual e repassa `status`, `link`, `archived` e `origin`. O escritor trata a entrada como a versão inteira e apaga o que ela deixa de fora. Quem grava calcula também o `taint: inherited` (ADR-0001 §5).
 - **O schema do índice passou para 4:** um índice de antes recomeça vazio e se refaz do cofre.
 
+### A rotina diária
+
+O ciclo de vida do Zikaron (#17) toma o lugar do [relatório diário](#the-daily-report) do Kelpie. Uma vez por dia, o alarme do cofre roda a rotina, depois do trabalho do GitHub. Ela arquiva as tarefas encerradas e escreve o relatório. Não chama modelo e nunca apaga uma nota.
+- **Quem grava é o próprio servidor:** o cliente `zikaron`, que nenhum cliente da configuração pode ter. A rotina usa a fila de sempre, e o commit leva o trailer `Zikaron-Client: zikaron`.
+- **O arquivo das tarefas** (o Q5): cada `task` e `delegation` atual com `status: done`, ou cuja data passou de 90 dias, ganha uma versão com `archived: true`.
+  - A data é o `valid_from`, senão quando a nota foi escrita, como no `writtenAt` do Kelpie.
+  - A nova versão leva tudo o mais, como o `memory_archive`. O `origin` da versão anterior vai como está: arquivar não lava a contaminação nem a põe, e a confiança calculada na leitura não muda.
+  - Só se arquiva uma versão que o servidor escreveu e que não vale como do dono. A tarefa do dono fica como está e vai para «Tarefas do dono para arquivar». Isso vale para uma que o dono editou, para uma «dita pelo dono» que vale como dele e para um merge com as linhas do dono.
+  - Desarquivar é tirar o `archived` no cofre. A versão passa a ser do dono, e a rotina só a lista, sem arquivá-la de novo.
+  - Nunca se arquiva uma nota que o núcleo de algum cliente carrega.
+  - Uma tarefa com gravação na fila, ou retida com marcadores de conflito, espera o dia seguinte.
+  - Uma edição do dono que chega enquanto o arquivo espera o commit ganha inteira, sem merge nem conflito.
+  - O commit diz «Arquiva tarefas encerradas» e não nomeia nota.
+- **O relatório,** em `memory/_lint/report.md`, fora do índice, em pt-BR e só com links. Valem as regras do Kelpie para títulos, caminhos e o tamanho das listas. As seções:
+  - **Notas do dono que um cliente mudou:** as versões que um commit do servidor substituiu ou removeu na última semana, com quem mudou. Contam as que valiam como do dono, pela configuração atual dos clientes, e as que guardavam as linhas do dono num merge. Conta também o commit cuja resposta se perdeu. O próprio relatório não conta.
+  - **Ditas pelo dono, pelo provedor:** o que o servidor gravou com `source: owner` pelo provedor na última semana, por cliente. É o risco do `ownerClaims` (ADR-0001 e ADR-0003). A evidência fica na nota, nunca no relatório. O arquivo da rotina, que leva o `origin` adiante, não conta como gravação nova.
+  - **Esperam o «sim»:** as notas com `review: pending`, pelo cliente da origem.
+  - **Tarefas arquivadas:** o que a rotina arquivou na última semana, enquanto o cofre guarda a versão que ela deixou.
+  - **Tarefas do dono para arquivar.**
+  - **Notas frias e duplicadas,** como no Kelpie. Sem vetores, não há a lista de contradições. Fria é uma nota episódica (uma sessão, um evento, uma tarefa) antiga: o Zikaron ainda não conta quem relembra uma nota.
+- **Os mesmos achados escrevem a mesma página,** sem hora: um dia sem novidade não faz commit, e sem achados a página sai.
+  - Uma tarefa que a rotina acaba de pôr na fila já conta como arquivada.
+  - Num dia de arquivo, o relatório vai no mesmo commit.
+- **Uma falha** deixa no log só o nome do erro, e a rotina espera o dia seguinte. As gravações dos clientes já saíram no mesmo alarme, antes dela.
+  - Sem a configuração dos clientes, nada se arquiva, e o relatório sai assim mesmo.
+  - O «esqueça» do dono (`forget`) tira o relatório da fila, e a rotina roda de novo no próximo alarme.
+
 ## Credits
 
 The design follows [ai-memory](https://github.com/akitaonrails/ai-memory) at [`fc4da03`](https://github.com/akitaonrails/ai-memory/tree/fc4da03) (MIT, © 2026 Fabio Akita): versioned pages, FTS5 with diacritics folded, entity normalization, typed edges with a closed vocabulary, link extraction that skips code, and hybrid retrieval. Files translated from it carry its notice. The reference checks are on [#107](https://github.com/guedesdiogo/kelpie/issues/107#issuecomment-6010168197) and [#110](https://github.com/guedesdiogo/kelpie/issues/110#issuecomment-6012868696). The retrieval gate follows [hermes-agent](https://github.com/NousResearch/hermes-agent) at `86bdb75` (MIT). The lifecycle's retention score follows ai-memory's decay at [`b8e839f`](https://github.com/akitaonrails/ai-memory/blob/b8e839f6a9aee3e58f49dbc588e9107f8820e695/crates/ai-memory-store/src/decay.rs); its reference check is on [#111](https://github.com/guedesdiogo/kelpie/issues/111#issuecomment-6022538685).

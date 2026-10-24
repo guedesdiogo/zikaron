@@ -4,10 +4,13 @@ import {
   coreBlock,
   coreCarries,
   type IndexedVersion,
+  LIFECYCLE_REPORT_PATH,
+  lifecycleFindings,
   MemoryFormatError,
   MemoryIndex,
   type MemoryInput,
   memoryPath,
+  type NoteRef,
   needsMemory,
   noteVersion,
   pack,
@@ -18,6 +21,7 @@ import {
   renderHits,
   retrieve,
   writeMemory,
+  writtenAt,
 } from "@zikaron/memory";
 import {
   type FileChange,
@@ -27,7 +31,13 @@ import {
   type VaultFile,
 } from "@zikaron/vault";
 import { hasConflictMarkers } from "./conflicts.ts";
-import { type Client, type Clients, parseClients, readerPolicy } from "./identity.ts";
+import {
+  type Client,
+  type Clients,
+  parseClients,
+  readerPolicy,
+  SERVER_CLIENT,
+} from "./identity.ts";
 import { mergeOwnerWins } from "./merge.ts";
 import {
   archivedInput,
@@ -61,6 +71,7 @@ import {
   writeClaim,
 } from "./notes.ts";
 import { isClientName, isWritable } from "./paths.ts";
+import { memoryReport } from "./report.ts";
 import { decideWrite, mayForget, type Previous, type WriteClaim } from "./rules.ts";
 
 /** Set by the owner at deploy, as Worker secrets (Kelpie's ADR-0021). */
@@ -120,7 +131,25 @@ const HELD = "SELECT path FROM held";
 const MAX_FORGET_PATHS = 1_000;
 const MAX_PATH_CHARS = 300;
 /** The vault's own rows that can name a vault path, and so hold a copy of what it was. */
-const PATH_TABLES = ["queue", "conflicts", "held", "authored", "owner_merges"] as const;
+const PATH_TABLES = [
+  "queue",
+  "conflicts",
+  "held",
+  "authored",
+  "owner_merges",
+  "owner_changes",
+  "archived_tasks",
+] as const;
+/** A rotina diária (#17), no máximo uma vez por dia, como o ciclo de vida do Kelpie (#111). */
+const LIFECYCLE_EVERY_MS = 24 * 60 * 60_000;
+/** O relatório lista o que mudou nesta janela, e esquece o que é mais antigo. */
+const REPORT_WINDOW_MS = 7 * 24 * 60 * 60_000;
+/** Uma tarefa se encerra quando é cumprida, ou 90 dias depois da data dela (o Q5 do Diogo). */
+const TASK_DAYS_MS = 90 * 24 * 60 * 60_000;
+const TASK_KINDS: readonly string[] = ["task", "delegation"];
+/** Os resumos dos commits da rotina: nenhum nomeia uma nota. */
+const ARCHIVE_SUMMARY = "Arquiva tarefas encerradas";
+const REPORT_SUMMARY = "Atualiza o relatório da memória";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
@@ -158,6 +187,17 @@ CREATE TABLE IF NOT EXISTS authored (
 CREATE TABLE IF NOT EXISTS owner_merges (
   path TEXT PRIMARY KEY NOT NULL,
   content TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS owner_changes (
+  path TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  removed INTEGER NOT NULL DEFAULT 0,
+  client TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS archived_tasks (
+  path TEXT PRIMARY KEY NOT NULL,
+  blob_sha TEXT NOT NULL,
+  at INTEGER NOT NULL
 );
 `;
 
@@ -406,20 +446,31 @@ export class Vault extends DurableObject<VaultEnv> {
     }
     const now = Date.now();
     const line = oneLine(summary, `Update memory from ${client}`);
-    this.ctx.storage.transactionSync(() => {
-      for (const { path, content } of changes) {
-        this.#exec(
-          "INSERT INTO queue (client, path, content, summary, queued_at) VALUES (?, ?, ?, ?, ?)",
-          client,
-          path,
-          content,
-          line,
-          now,
-        );
-      }
-    });
+    this.ctx.storage.transactionSync(() => this.#enqueue(client, changes, line, now));
     await this.#alarmBy(now + FLUSH_DELAY_MS);
     return { ok: true };
+  }
+
+  /**
+   * Põe gravações na fila; quem chama abre a transação e já conferiu o caminho e o tamanho. A
+   * rotina diária grava assim também, em `memory/_lint/`, onde nenhum cliente grava.
+   */
+  #enqueue(
+    client: string,
+    changes: readonly { path: string; content: string | null }[],
+    summary: string,
+    now: number,
+  ): void {
+    for (const { path, content } of changes) {
+      this.#exec(
+        "INSERT INTO queue (client, path, content, summary, queued_at) VALUES (?, ?, ?, ?, ?)",
+        client,
+        path,
+        content,
+        summary,
+        now,
+      );
+    }
   }
 
   /** The webhook's call: a push reached `ref`. The alarm syncs a moment later, once per burst. */
@@ -454,6 +505,9 @@ export class Vault extends DurableObject<VaultEnv> {
       await this.ctx.storage.setAlarm(retryAt);
       return;
     }
+    // A rotina diária vem depois do trabalho do GitHub e falha sozinha: as gravações já foram, e o
+    // que ela põe na fila sai no próximo alarme, logo abaixo.
+    await this.#serialize(() => this.#lifecycle());
     const queued =
       this.#exec<{ n: number }>(`SELECT count(*) AS n FROM queue WHERE path NOT IN (${HELD})`)[0]
         ?.n ?? 0;
@@ -501,6 +555,12 @@ export class Vault extends DurableObject<VaultEnv> {
           rows += this.#exec<{ n: number }>(`SELECT count(*) AS n ${where}`, named)[0]?.n ?? 0;
           this.#exec(`DELETE ${where}`, named);
         }
+        // O relatório na fila, posto de lado, num merge ou retido pode nomear o que se apaga: sai, e
+        // o próximo alarme, logo, o escreve de novo com o que sobrou (como no Kelpie).
+        for (const table of ["queue", "conflicts", "owner_merges", "held"]) {
+          this.#exec(`DELETE FROM ${table} WHERE path = ?`, LIFECYCLE_REPORT_PATH);
+        }
+        this.#set("lifecycle_after", "0");
         return rows;
       });
       const stillInVault = this.#exec<{ path: string }>(
@@ -1150,6 +1210,254 @@ export class Vault extends DurableObject<VaultEnv> {
     }
   }
 
+  // A rotina diária (#17): uma vez por dia, depois do trabalho do GitHub, arquiva as tarefas
+  // encerradas e escreve o relatório da memória, sem chamar modelo. Grava como o próprio servidor
+  // (`zikaron`), pela fila de sempre, e nunca apaga uma nota.
+
+  /**
+   * A configuração de todos os clientes, para a confiança das notas como o índice a calcula
+   * (ADR-0001 §3), com o nome de cada um; null quando ela não se lê.
+   */
+  #configured(): { names: string[]; policy: ReaderPolicy } | null {
+    let clients: Clients;
+    try {
+      clients = parseClients(this.env.ZIKARON_CLIENTS);
+    } catch {
+      return null;
+    }
+    const server: Client = {
+      name: SERVER_CLIENT,
+      exposed: true,
+      privileged: false,
+      ownerClaims: false,
+    };
+    return {
+      names: [...clients.values()].map((client) => client.name),
+      policy: readerPolicy(server, clients),
+    };
+  }
+
+  /** Com que configuração o relatório diz o que vale como do dono; sem ela, nenhum `ownerClaims`. */
+  #ownerPolicy(): ReaderPolicy {
+    return (
+      this.#configured()?.policy ?? {
+        client: SERVER_CLIENT,
+        mode: "exposed",
+        trusted: [],
+        ownerClaims: [],
+      }
+    );
+  }
+
+  /** O arquivo de um caminho, quem escreveu o blob dele e se ele guarda as linhas do dono num merge. */
+  #fileOf(
+    path: string,
+  ): { content: string; blob_sha: string; authored: string | null; merged: number } | undefined {
+    return this.#exec<{
+      content: string;
+      blob_sha: string;
+      authored: string | null;
+      merged: number;
+    }>(
+      `SELECT f.content AS content, f.blob_sha AS blob_sha, a.blob_sha AS authored,
+              EXISTS (SELECT 1 FROM owner_merges m WHERE m.path = f.path AND m.content = f.content)
+                AS merged
+       FROM files f LEFT JOIN authored a ON a.path = f.path WHERE f.path = ?`,
+      path,
+    )[0];
+  }
+
+  /**
+   * A versão que o cofre tem num caminho vale como do dono: pelo índice, com a configuração dos
+   * clientes, ou porque guarda as linhas do dono num merge (#160 do Kelpie). Um arquivo fora do
+   * índice é do dono quando o servidor não escreveu o blob dele, como no Kelpie. O relatório, que é
+   * do servidor, nunca conta.
+   */
+  #ownerVersion(path: string, policy: ReaderPolicy): boolean {
+    if (path === LIFECYCLE_REPORT_PATH) return false;
+    const file = this.#fileOf(path);
+    if (file === undefined) return false;
+    if (file.merged === 1) return true;
+    const trust = this.#memory.trust(path, policy);
+    return trust === null ? file.authored !== file.blob_sha : trust.ownerGrade;
+  }
+
+  /**
+   * Uma vez por dia, depois do trabalho do GitHub: o arquivo das tarefas encerradas e o relatório.
+   * Lê o índice no head; se não consegue levá-lo até lá, tenta de novo no próximo alarme. Qualquer
+   * outra falha espera o dia seguinte, e o log diz só o nome do erro.
+   */
+  async #lifecycle(): Promise<void> {
+    const now = Date.now();
+    if (now < Number(this.#get("lifecycle_after") ?? "0")) return;
+    try {
+      await this.#catchUp();
+    } catch (error) {
+      console.error("Vault: the daily routine waits for the index", errorName(error));
+      return;
+    }
+    this.#set("lifecycle_after", `${now + LIFECYCLE_EVERY_MS}`);
+    try {
+      const configured = this.#configured();
+      // Sem a configuração dos clientes não se sabe o que vale como do dono: nada é arquivado.
+      if (configured === null) {
+        console.error("Vault: the daily routine can't read the clients; it archives nothing");
+      }
+      const tasks =
+        configured === null
+          ? { archived: 0, owners: [] }
+          : await this.#archiveTasks(configured, now);
+      this.#report(now, tasks.owners, tasks.archived > 0);
+    } catch (error) {
+      console.error("Vault: the daily routine failed", errorName(error));
+    }
+  }
+
+  /**
+   * Arquiva cada tarefa e delegação encerrada (o Q5 do Diogo): `status: done`, ou com a data
+   * (`valid_from`, senão quando foi escrita, como o `writtenAt` do Kelpie) passada de 90 dias.
+   * - **Só uma versão do servidor** que não vale como do dono: as do dono, e as que o dono editou,
+   *   voltam para o relatório sem mudança.
+   * - **Nunca uma que o núcleo carrega,** para cliente nenhum.
+   * - **A nova versão leva tudo o mais,** como o `archiveNote`, e o `origin` da anterior como está:
+   *   arquivar não lava a contaminação nem a põe, e a confiança calculada na leitura não muda.
+   * - Uma nota com gravação na fila, ou retida, espera o dia seguinte; uma que não se regrava
+   *   (um frontmatter ilegível) fica como está.
+   */
+  async #archiveTasks(
+    configured: { names: string[]; policy: ReaderPolicy },
+    now: number,
+  ): Promise<{ archived: number; owners: NoteRef[] }> {
+    const owners: NoteRef[] = [];
+    let archived = 0;
+    let failed = 0;
+    const at = new Date(now).toISOString();
+    for (const note of this.#memory.lifecycleNotes()) {
+      if (!TASK_KINDS.includes(note.kind)) continue;
+      if (note.status !== "done" && now - (note.validFrom ?? writtenAt(note)) <= TASK_DAYS_MS) {
+        continue;
+      }
+      if ([SERVER_CLIENT, ...configured.names].some((name) => coreCarries(note, name))) continue;
+      const file = this.#fileOf(note.path);
+      // O índice mostra a versão do cofre, sem conflito retido nem gravação na fila.
+      if (file?.blob_sha !== note.blobSha || this.#queuedWrite(note.path) !== undefined) continue;
+      if (
+        file.authored !== file.blob_sha ||
+        file.merged === 1 ||
+        this.#memory.trust(note.path, configured.policy)?.ownerGrade !== false
+      ) {
+        owners.push({ path: note.path, title: note.title });
+        continue;
+      }
+      try {
+        const before = parseNote(note.path, file.content);
+        if (before === null) throw new MemoryFormatError(["the note can't be read"]);
+        const decided = {
+          level: before.level ?? "inferred",
+          ...(before.origin === null ? {} : { origin: before.origin }),
+        } as const;
+        const memory = {
+          ...buildMemory(archivedInput(before), before, decided),
+          archived: true,
+        };
+        const text = (await writeMemory(memory, { at, existing: file.content })).text;
+        const sha = await gitBlobSha(text);
+        // Nada mudou enquanto a versão nova se escrevia: nem o cofre, nem a fila.
+        if (this.#visible(note.path) !== file.content) continue;
+        this.ctx.storage.transactionSync(() => {
+          this.#enqueue(SERVER_CLIENT, [{ path: note.path, content: text }], ARCHIVE_SUMMARY, now);
+          this.#exec(
+            "INSERT OR REPLACE INTO archived_tasks (path, blob_sha, at) VALUES (?, ?, ?)",
+            note.path,
+            sha,
+            now,
+          );
+        });
+        archived += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    if (archived + owners.length + failed > 0) {
+      console.log("Vault: the daily routine looked at the tasks", {
+        archived,
+        owners: owners.length,
+        failed,
+      });
+    }
+    return { archived, owners };
+  }
+
+  /**
+   * O relatório da memória em `memory/_lint/report.md`, fora do índice, pela fila, como o próprio
+   * servidor: só quando muda, e removido quando não há nada. Os registros mais antigos que a janela
+   * saem antes. Uma tarefa que a rotina acabou de pôr na fila para arquivar já conta como
+   * arquivada, para o relatório de amanhã, sem novidade, ser o mesmo.
+   */
+  #report(now: number, ownersTasks: readonly NoteRef[], archivedToday: boolean): void {
+    const since = now - REPORT_WINDOW_MS;
+    this.#exec("DELETE FROM owner_changes WHERE at < ?", since);
+    this.#exec("DELETE FROM archived_tasks WHERE at < ?", since);
+    const titled = (path: string) =>
+      this.#memory.current(path)?.title ??
+      path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/, "");
+    const changes = new Map<string, { at: number; removed: boolean; clients: Set<string> }>();
+    for (const row of this.#exec<{ path: string; at: number; removed: number; client: string }>(
+      "SELECT path, at, removed, client FROM owner_changes ORDER BY path, at, rowid",
+    )) {
+      const change = changes.get(row.path) ?? { at: 0, removed: false, clients: new Set() };
+      change.at = row.at;
+      change.removed = row.removed === 1;
+      change.clients.add(row.client);
+      changes.set(row.path, change);
+    }
+    // O que a rotina arquivou: na fila ainda, ou a versão que o cofre guarda.
+    const archived = this.#exec<{ path: string; at: number; queued: number }>(
+      `SELECT t.path AS path, t.at AS at,
+              EXISTS (SELECT 1 FROM queue q WHERE q.path = t.path AND q.client = ?) AS queued
+       FROM archived_tasks t
+       WHERE EXISTS (SELECT 1 FROM queue q WHERE q.path = t.path AND q.client = ?)
+          OR EXISTS (SELECT 1 FROM files f WHERE f.path = t.path AND f.blob_sha = t.blob_sha)`,
+      SERVER_CLIENT,
+      SERVER_CLIENT,
+    );
+    const archiving = new Set(archived.filter((row) => row.queued === 1).map((row) => row.path));
+    const live = (note: NoteRef) => !archiving.has(note.path);
+    const { cold, duplicates } = lifecycleFindings(this.#memory, { now, uses: new Map() });
+    const page = memoryReport({
+      changed: [...changes].map(([path, change]) => ({
+        path,
+        title: titled(path),
+        at: change.at,
+        removed: change.removed,
+        clients: [...change.clients],
+      })),
+      // O arquivo da rotina leva o `origin` adiante: não é uma gravação nova do cliente.
+      ownerClaims: this.#memory.ownerClaimsSince(
+        since,
+        this.#exec<{ blob_sha: string }>("SELECT blob_sha FROM archived_tasks").map(
+          (row) => row.blob_sha,
+        ),
+      ),
+      pending: this.#memory
+        .lifecycleNotes()
+        .filter((note) => note.pending && live(note))
+        .map((note) => ({ path: note.path, title: note.title, client: note.originClient ?? "?" })),
+      archived: archived.map((row) => ({ path: row.path, title: titled(row.path), at: row.at })),
+      ownersTasks: [...ownersTasks],
+      cold: cold.filter(live),
+      duplicates: duplicates
+        .map((group) => ({ ...group, notes: group.notes.filter(live) }))
+        .filter((group) => group.notes.length > 1),
+    });
+    if (page === this.#visible(LIFECYCLE_REPORT_PATH)) return;
+    // Num dia de arquivo, o relatório vai no mesmo commit, com o mesmo resumo.
+    const summary = archivedToday ? ARCHIVE_SUMMARY : REPORT_SUMMARY;
+    this.ctx.storage.transactionSync(() =>
+      this.#enqueue(SERVER_CLIENT, [{ path: LIFECYCLE_REPORT_PATH, content: page }], summary, now),
+    );
+  }
+
   /** Sets the alarm to `at`, unless one is due sooner; never before a pending retry. */
   async #alarmBy(at: number): Promise<void> {
     const when = Math.max(at, Number(this.#get("retry_at") ?? "0"));
@@ -1193,6 +1501,14 @@ export class Vault extends DurableObject<VaultEnv> {
             .filter((file) => file.content !== null && hasConflictMarkers(file.content))
             .map((file) => [file.path, this.#fileContent(file.path)] as const),
         );
+        // Gravações na fila por cima de uma versão do dono: se um commit delas chegou com a resposta
+        // perdida, o relatório registra a mudança, lida aqui, antes de os arquivos mudarem (#160).
+        const policy = this.#ownerPolicy();
+        const owners = new Set(
+          this.#exec<{ path: string }>("SELECT DISTINCT path FROM queue")
+            .map((row) => row.path)
+            .filter((path) => this.#ownerVersion(path, policy)),
+        );
         const changed = snapshot
           ? this.#replaceFiles(snapshot.files)
           : this.#apply(diff?.changes ?? []);
@@ -1204,7 +1520,7 @@ export class Vault extends DurableObject<VaultEnv> {
           }
           // The owner pushed it without markers: the hold ends, and queued writes merge into it.
           this.#exec("DELETE FROM held WHERE path = ?", path);
-          this.#settleQueued(path, content, bases.get(path) ?? null);
+          this.#settleQueued(path, content, bases.get(path) ?? null, owners.has(path));
         }
         this.#set("head", remote);
         // A merge's mark, and the note text it keeps, go with its version, unless it waits to
@@ -1303,7 +1619,13 @@ export class Vault extends DurableObject<VaultEnv> {
    * where they overlap. Without a common version, or when either side removed the file, the owner's
    * edit wins whole. Writes that lost lines are set aside in `conflicts`.
    */
-  #settleQueued(path: string, incoming: string | null, base: string | null): void {
+  #settleQueued(
+    path: string,
+    incoming: string | null,
+    base: string | null,
+    /** A versão que a sincronização substituiu valia como do dono. */
+    overOwners: boolean,
+  ): void {
     const queued = this.#exec<{
       id: number;
       client: string;
@@ -1320,6 +1642,17 @@ export class Vault extends DurableObject<VaultEnv> {
     if (landed !== -1) {
       // The server's own commit, whose answer was lost: those writes are done, later ones wait.
       this.#exec("DELETE FROM queue WHERE path = ? AND id <= ?", path, queued[landed]?.id ?? 0);
+      // Ela substituiu a versão do dono: o relatório a lista, como o flush listaria. Uma edição do
+      // próprio dono igual à da fila também conta: rara, e o relatório erra para o lado de listar.
+      if (overOwners) {
+        this.#exec(
+          "INSERT INTO owner_changes (path, at, removed, client) VALUES (?, ?, ?, ?)",
+          path,
+          Date.now(),
+          incoming === null ? 1 : 0,
+          queued[landed]?.client ?? SERVER_CLIENT,
+        );
+      }
       // And the version is the server's.
       if (incoming !== null) {
         this.#exec(
@@ -1333,6 +1666,14 @@ export class Vault extends DurableObject<VaultEnv> {
           ),
         );
       }
+      return;
+    }
+    // A gravação da rotina diária é para a versão que ela leu: uma edição do dono depois ganha
+    // inteira, sem merge nem conflito. A tarefa fica como o dono a deixou, e o próximo relatório
+    // se escreve de novo.
+    if (last.client === SERVER_CLIENT) {
+      this.#exec("DELETE FROM queue WHERE path = ?", path);
+      this.#exec("DELETE FROM archived_tasks WHERE path = ?", path);
       return;
     }
     const result =
@@ -1482,6 +1823,21 @@ export class Vault extends DurableObject<VaultEnv> {
       }
       const commit = outcome.commit;
       this.ctx.storage.transactionSync(() => {
+        // Uma versão do dono que a gravação de um cliente substituiu ou removeu: o relatório a lista
+        // (#160 do Kelpie, ADR-0003). Lida antes de os arquivos e o índice mudarem.
+        const policy = this.#ownerPolicy();
+        const by = new Map(rows.map((row) => [row.path, row.client]));
+        const now = Date.now();
+        for (const path of [...writes.map((write) => write.path), ...deletions]) {
+          if (!this.#ownerVersion(path, policy)) continue;
+          this.#exec(
+            "INSERT INTO owner_changes (path, at, removed, client) VALUES (?, ?, ?, ?)",
+            path,
+            now,
+            latest.get(path) === null ? 1 : 0,
+            by.get(path) ?? SERVER_CLIENT,
+          );
+        }
         writes.forEach(({ path, content }, i) => {
           this.#exec(
             "INSERT OR REPLACE INTO files (path, content, blob_sha) VALUES (?, ?, ?)",

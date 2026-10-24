@@ -89,7 +89,10 @@ describe("Vault provenance", () => {
     await stub.write("alfa", [{ path: ana, content: null }], "w");
     await runDurableObjectAlarm(stub);
     expect(await rows(stub, "SELECT count(*) AS n FROM owner_merges")).toEqual([{ n: 0 }]);
-    expect(await rows(stub, "SELECT count(*) AS n FROM authored")).toEqual([{ n: 0 }]);
+    // O relatório diário, que lista a nota do dono mudada, é do servidor.
+    expect(
+      await rows(stub, "SELECT count(*) AS n FROM authored WHERE path != 'memory/_lint/report.md'"),
+    ).toEqual([{ n: 0 }]);
   });
 
   it("knows its own commit when GitHub's answer was lost, and forgets a file the owner removed", async () => {

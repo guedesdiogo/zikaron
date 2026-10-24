@@ -48,7 +48,7 @@ Cada cliente de `ZIKARON_CLIENTS` tem quatro campos, e nenhum outro:
 }
 ```
 
-- `name`: minúsculas, dígitos e hífen, até 40 caracteres, único.
+- `name`: minúsculas, dígitos e hífen, até 40 caracteres, único. Nunca `zikaron`, o nome do próprio servidor, que grava a rotina diária ([memory-format](memory-format.md#a-rotina-diária)).
 - `exposed`: lê conteúdo de fora.
 - `privileged`: age com a autoridade do dono.
 - `ownerClaims`: o que ele grava como dito pelo dono, pelo provedor, vale como do dono.

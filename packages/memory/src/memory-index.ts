@@ -848,6 +848,12 @@ export class MemoryIndex {
     /** The frontmatter's `updated`, as written: Kelpie's last write, when it wrote the note. */
     updated: unknown;
     blobSha: string;
+    /** O `status` de uma `task` ou `delegation` (#6). */
+    status: Status | null;
+    /** O cliente do bloco `origin`, quando ele vale (ADR-0001 §3). */
+    originClient: string | null;
+    /** A versão espera o «sim» do dono. */
+    pending: boolean;
   }[] {
     return this.#exec<{
       path: string;
@@ -863,12 +869,15 @@ export class MemoryIndex {
       invalid_at: number | null;
       updated: SqlValue;
       blob_sha: string;
+      status: string | null;
+      origin_client: string | null;
+      origin_review: string | null;
     }>(
       `SELECT path, scope, title, title_key, kind, tier, pinned, evergreen, recorded_at, valid_from,
               invalid_at,
               -- Too deep for SQLite's JSON functions: no 'updated', rather than no report.
               CASE WHEN json_valid(frontmatter) THEN json_extract(frontmatter, '$.updated') END AS updated,
-              blob_sha
+              blob_sha, status, origin_client, origin_review
        FROM versions v WHERE is_current = 1 AND archived = 0 AND ${NOT_MERGED} ORDER BY path`,
     ).map((row) => ({
       path: row.path,
@@ -884,7 +893,54 @@ export class MemoryIndex {
       invalidAt: row.invalid_at,
       updated: row.updated,
       blobSha: row.blob_sha,
+      status: row.status as Status | null,
+      originClient: row.origin_client,
+      pending: row.origin_review === "pending",
     }));
+  }
+
+  /**
+   * As versões que o servidor gravou como ditas pelo dono, pelo provedor, escritas desde `since`: o
+   * risco do `ownerClaims` (ADR-0001, Consequências), que o relatório diário mostra. Atuais ou não,
+   * arquivadas ou fundidas também, a última de cada cliente em cada caminho. Quando foi escrita é o
+   * `updated` dela, nunca depois do commit, como no `writtenAt`: um índice refeito não a faz nova.
+   * As versões de `except` (os blobs que o arquivo da rotina escreveu, levando o `origin` adiante)
+   * não são uma gravação nova do cliente.
+   */
+  ownerClaimsSince(
+    since: number,
+    except: readonly string[] = [],
+  ): { path: string; title: string; client: string; at: number }[] {
+    const latest = new Map<string, { path: string; title: string; client: string; at: number }>();
+    for (const row of this.#exec<{
+      path: string;
+      title: string;
+      origin_client: string;
+      recorded_at: number;
+      updated: SqlValue;
+    }>(
+      `SELECT v.path, v.title, v.origin_client, v.recorded_at,
+              CASE WHEN json_valid(v.frontmatter) THEN json_extract(v.frontmatter, '$.updated') END AS updated
+       FROM versions v
+       WHERE v.recorded_at >= ? AND v.origin_source IS 'owner' AND v.origin_channel IS 'provider'
+         AND v.origin_client IS NOT NULL
+         AND EXISTS (SELECT 1 FROM authored_blobs a WHERE a.blob_sha = v.blob_sha)
+         AND v.blob_sha NOT IN (SELECT value FROM json_each(?))
+       ORDER BY v.commit_seq`,
+      since,
+      JSON.stringify(except),
+    )) {
+      const updated = typeof row.updated === "string" ? instantOf(row.updated) : null;
+      const at = updated === null ? row.recorded_at : Math.min(updated, row.recorded_at);
+      if (at < since) continue;
+      latest.set(`${row.origin_client}\n${row.path}`, {
+        path: row.path,
+        title: row.title,
+        client: row.origin_client,
+        at,
+      });
+    }
+    return [...latest.values()];
   }
 
   /** The vectors `model` gave these contents, those that are whole floats. */

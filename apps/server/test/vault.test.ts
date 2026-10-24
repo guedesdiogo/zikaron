@@ -347,7 +347,10 @@ describe("Vault", () => {
     // The owner's file is left as it is, without a commit of its own.
     const committed = backend.commitRequests.flatMap((request) => request.writes);
     expect(committed.map((write) => write.path)).toEqual(["memory/people/ana.md"]);
-    expect(await rows(stub, "SELECT count(*) AS n FROM queue")).toEqual([{ n: 0 }]);
+    // Só o relatório diário espera, a rotina do próprio servidor.
+    expect(await rows(stub, "SELECT count(*) AS n FROM queue WHERE client != 'zikaron'")).toEqual([
+      { n: 0 },
+    ]);
     // Only what lost to the owner is set aside.
     expect(await rows(stub, "SELECT client, path, content, reason FROM conflicts")).toEqual([
       {

@@ -290,12 +290,17 @@ function plain(text: string, max: number, unsafe: RegExp = UNSAFE_TEXT): string 
   return Array.from(safe.replace(/\s+/g, " ").trim()).slice(0, max).join("").trim();
 }
 
+/** A path as code, where nothing in it is syntax: a removed note, or one no link can name. */
+export function pathCode(path: string): string {
+  return `\`${plain(path, PATH_CHARS, UNSAFE_CODE)}\``;
+}
+
 /** A wikilink to a note, from the vault's root, that a title or a path can't break out of. */
-function link(note: NoteRef): string {
+export function link(note: NoteRef): string {
   const target = note.path.replace(/\.md$/, "");
   // A path no link can name, or too long to show whole, is shown as code: nothing in it is syntax.
   if (UNSAFE_PATH.test(target) || Array.from(target).length > PATH_CHARS) {
-    return `\`${plain(note.path, PATH_CHARS, UNSAFE_CODE)}\``;
+    return pathCode(note.path);
   }
   return `[[${target}|${plain(note.title, TITLE_CHARS) || target}]]`;
 }
@@ -330,7 +335,7 @@ export function lifecycleReport(findings: LifecycleFindings): string | null {
         ...capped(
           findings.changed.map((note) =>
             note.removed
-              ? `- \`${plain(note.path, PATH_CHARS, UNSAFE_CODE)}\`: removed ${day(note.changedAt)}`
+              ? `- ${pathCode(note.path)}: removed ${day(note.changedAt)}`
               : `- ${link(note)}: changed ${day(note.changedAt)}`,
           ),
         ),

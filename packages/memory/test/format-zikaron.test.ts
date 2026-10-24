@@ -4,6 +4,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import {
   coreBlock,
+  gitBlobSha,
   MemoryFormatError,
   MemoryIndex,
   type MemoryInput,
@@ -293,6 +294,117 @@ describe("o arquivo", () => {
       await index.rebuild(vault.history);
       expect(index.dump()).toEqual(before);
       expect(before.versions[0]).toMatchObject({ archived: true, origin: NOAH, status: null });
+    });
+  });
+});
+
+describe("o ciclo de vida do Zikaron (#17)", () => {
+  const TASK: MemoryInput = {
+    scope: "global",
+    kind: "task",
+    title: "Renovar o passaporte",
+    body: "Renovar o passaporte antes da viagem.",
+    level: "inferred",
+    confidence: 0.8,
+    status: "done",
+    origin: { ...NOAH, channel: "tool", source: "agent", evidence: null, review: "pending" },
+  };
+
+  it("as notas do ciclo de vida dizem o status, o cliente da origem e a pendência", async () => {
+    await withIndex("ciclo-notas", async (index) => {
+      const task = await writeMemory(TASK, { at: AT });
+      await index.applyCommit(
+        new FakeVault().commit({
+          "memory/tasks/renovar-o-passaporte.md": task.text,
+          "memory/notes/solta.md": "# Solta\n\nUma nota do dono.\n",
+        }),
+      );
+      expect(
+        index.lifecycleNotes().map(({ path, status, originClient, pending }) => ({
+          path,
+          status,
+          originClient,
+          pending,
+        })),
+      ).toEqual([
+        { path: "memory/notes/solta.md", status: null, originClient: null, pending: false },
+        {
+          path: "memory/tasks/renovar-o-passaporte.md",
+          status: "done",
+          originClient: "noah",
+          pending: true,
+        },
+      ]);
+    });
+  });
+
+  it("lista o que o servidor gravou como dito pelo dono, pelo provedor, desde um instante", async () => {
+    await withIndex("ciclo-donos", async (index) => {
+      const vault = new FakeVault();
+      const said = (title: string, origin: Origin, at = AT) =>
+        writeMemory({ ...CAFE, title, origin }, { at });
+      const first = await said("Café sem açúcar", NOAH);
+      const second = await said("Café sem açúcar, de novo", NOAH);
+      // O arquivo da rotina leva o `origin` adiante: com `except`, não é uma gravação nova.
+      const archived = await said("Café sem açúcar, arquivada", NOAH);
+      // O `updated` de antes do instante: um índice refeito não a faz nova.
+      const old = await said("Chá verde", NOAH, "2026-09-01T00:00:00Z");
+      const tool = await said("Pão integral", { ...NOAH, channel: "tool" });
+      const agent = await said("Bolo de fubá", { ...NOAH, source: "agent", review: "pending" });
+      const alan = await said("Água com gás", { ...NOAH, client: "alan", evidence: null });
+      // O mesmo bloco num blob do dono: ele mesmo escreveu, não o provedor.
+      const owners = await said("Suco de laranja", NOAH);
+      index.markAuthored(
+        await Promise.all(
+          [first, second, archived, old, tool, agent, alan].map((note) => gitBlobSha(note.text)),
+        ),
+      );
+      // 2026-10-01T01:00: antes do instante.
+      await index.applyCommit(vault.commit({ "memory/preferences/cafe.md": first.text }));
+      const since = Date.parse("2026-10-01T01:30:00Z");
+      await index.applyCommit(
+        vault.commit({
+          "memory/preferences/cafe.md": second.text,
+          "memory/preferences/cha.md": old.text,
+          "memory/preferences/pao.md": tool.text,
+          "memory/preferences/bolo.md": agent.text,
+          "memory/preferences/agua.md": alan.text,
+          "memory/preferences/suco.md": owners.text,
+        }),
+      );
+      // Uma versão nova, que já não é do dono, não apaga a que foi.
+      await index.applyCommit(vault.commit({ "memory/preferences/agua.md": agent.text }));
+      await index.applyCommit(vault.commit({ "memory/preferences/cafe.md": archived.text }));
+      const at = Date.parse("2026-10-01T02:00:00Z");
+      const last = Date.parse("2026-10-01T04:00:00Z");
+      const byPath = (a: { path: string }, b: { path: string }) => (a.path < b.path ? -1 : 1);
+      const agua = {
+        path: "memory/preferences/agua.md",
+        title: "Água com gás",
+        client: "alan",
+        at,
+      };
+      expect(index.ownerClaimsSince(since).sort(byPath)).toEqual([
+        agua,
+        {
+          path: "memory/preferences/cafe.md",
+          title: "Café sem açúcar, arquivada",
+          client: "noah",
+          at: last,
+        },
+      ]);
+      expect(index.ownerClaimsSince(since, [await gitBlobSha(archived.text)]).sort(byPath)).toEqual(
+        [
+          agua,
+          {
+            path: "memory/preferences/cafe.md",
+            title: "Café sem açúcar, de novo",
+            client: "noah",
+            at,
+          },
+        ],
+      );
+      expect(index.ownerClaimsSince(last + 1)).toEqual([]);
     });
   });
 });

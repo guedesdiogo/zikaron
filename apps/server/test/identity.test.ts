@@ -232,6 +232,12 @@ describe("parseClients", () => {
         b: { name: "noah", exposed: false, privileged: false, ownerClaims: false },
       }),
     ],
+    [
+      "com o nome do próprio servidor",
+      JSON.stringify({
+        a: { name: "zikaron", exposed: false, privileged: false, ownerClaims: false },
+      }),
+    ],
   ])("recusa a configuração %s", (_label, json) => {
     expect(() => parseClients(json)).toThrow();
   });
