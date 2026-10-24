@@ -204,7 +204,7 @@ Every conversation's history becomes session pages (#109), with no model call:
   - A link without a `/` names a file, which Obsidian finds anywhere in the vault. Names may hold dots (`[[Node.js]]`, `[[Meeting 2026.10.06]]`).
   - A link with a `/` is a path from the vault's root, or from the note's folder when it starts with `./` or `../`.
 - **Embeds:** `![[Recipe]]` is a link of its own kind. Links and embeds of attachments are skipped. An attachment is a file with an image, audio, video, PDF, canvas, base, office or archive extension, such as `![[photo.png]]` or `[[doc.pdf]]`.
-- **Markdown links:** `[text](https://github.com/guedesdiogo/kelpie/blob/f033cf3/places/lisboa.md)` must name a `.md` file and resolves from the note's folder. URLs, `mailto:` and images are skipped.
+- **Markdown links:** `[text](../places/lisboa.md)` must name a `.md` file and resolves from the note's folder. URLs, `mailto:` and images are skipped.
 - **What else is skipped:** links in fenced code blocks and inline code, and same-note links (`[[#Heading]]`).
   - A fence may open on a list item or in a quote (``- ```sh``, ``> ```  ``).
   - Inline code that spans lines isn't seen as code.
