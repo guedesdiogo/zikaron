@@ -10,7 +10,19 @@
   // O GitHub App e o repositório do cofre são de um deploy, e entram como `--var` no deploy.
   // Enquanto algum estiver vazio, ou faltar um segredo, o cofre fica desligado. Os segredos são
   // GITHUB_APP_PRIVATE_KEY (a chave do App, em PKCS#8) e GITHUB_WEBHOOK_SECRET.
-  "vars": { "GITHUB_APP_ID": "", "GITHUB_INSTALLATION_ID": "", "VAULT_REPOSITORY": "" },
+  // A identidade (ADR-0001 §1) também é de um deploy, e entra como `--var`: ACCESS_TEAM_DOMAIN é o
+  // domínio do time no Access (`https://<time>.cloudflareaccess.com`), ACCESS_AUD o AUD da aplicação,
+  // e ZIKARON_CLIENTS o JSON do Client ID de cada service token para o cliente (`name`, `exposed`,
+  // `privileged`, `ownerClaims`). Vazios, ninguém entra: as rotas fora do webhook respondem 401, ou
+  // 500 sem a configuração dos clientes.
+  "vars": {
+    "GITHUB_APP_ID": "",
+    "GITHUB_INSTALLATION_ID": "",
+    "VAULT_REPOSITORY": "",
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+    "ZIKARON_CLIENTS": ""
+  },
   "durable_objects": {
     "bindings": [{ "name": "VAULT", "class_name": "Vault" }]
   },

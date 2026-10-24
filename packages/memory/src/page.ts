@@ -14,6 +14,8 @@ const MAX_LINKS = 50;
 const HIT_START_CHARS = 240;
 const TITLE_CHARS = 120;
 const PATH_CHARS = 300;
+/** A document's link shows whole: the format takes up to 2,000 characters. */
+const LINK_CHARS = 2_000;
 /** The longest footer, so a page's room is known before its body is cut. */
 const LONGEST_FOOTER = `Continues: read again with offset ${"9".repeat(12)}.`;
 
@@ -29,9 +31,11 @@ function validity(validFrom: number | null, invalidAt: number | null): string | 
 
 /**
  * Who wrote a note, as far as Kelpie knows: its own commits are recorded, but notes from before the
- * record, and other clients of the vault, aren't the owner's for that.
+ * record, and other clients of the vault, aren't the owner's for that. O Zikaron passa a linha de
+ * proveniência do ADR-0001 §6 no lugar.
  */
-const writer = (byKelpie: boolean) => (byKelpie ? "written by Kelpie" : "not written by Kelpie");
+const writer = (options: { byKelpie?: boolean; provenance?: string }) =>
+  options.provenance ?? (options.byKelpie ? "written by Kelpie" : "not written by Kelpie");
 
 export interface PageLink {
   title: string;
@@ -51,12 +55,17 @@ export type PageVersion = Pick<
   | "pinned"
   | "body"
   | "frontmatter"
+  | "archived"
+  | "status"
+  | "link"
 >;
 
 export interface ReadPageOptions {
   /** Where the page starts in the body, in UTF-16 code units, as `nextOffset` gave it. */
   offset: number;
-  byKelpie: boolean;
+  byKelpie?: boolean;
+  /** A linha de proveniência da nota (`provenance`), que substitui o «written by Kelpie». */
+  provenance?: string;
   /** The note's version (`noteVersion`), which `memory_write` takes back to change it (#297). */
   version: string;
   /** The note's links the reader may follow; shown on the first page only. */
@@ -71,7 +80,8 @@ export interface Page {
 
 /**
  * A page of a note: its heading and what it is, its body from `offset`, its links on the first
- * page, and where to go on. The whole page stays under READ_PAGE_CHARS, and is never cut inside a
+ * page, and where to go on. Uma nota arquivada diz que está, um `document` mostra o link, e uma
+ * `task` ou `delegation` o `status` (#6). The whole page stays under READ_PAGE_CHARS, and is never cut inside a
  * surrogate pair.
  */
 export function readPage(version: PageVersion, options: ReadPageOptions): Page {
@@ -88,13 +98,17 @@ export function readPage(version: PageVersion, options: ReadPageOptions): Page {
       typeof updated === "string" && isDateTime(updated) ? `updated ${updated.slice(0, 10)}` : null,
       version.level,
       version.pinned ? "pinned" : null,
-      writer(options.byKelpie),
+      version.archived ? "archived" : null,
+      version.status ? `status ${version.status}` : null,
+      writer(options),
       `version ${options.version}`,
     ]
       .filter((part) => part)
       .join(" · "),
     400,
   );
+  const link =
+    typeof version.link === "string" ? `\nlink ${oneLine(version.link, LINK_CHARS)}` : "";
   const body = bodyWithoutHeading(version.title, version.body);
   let start = Math.min(Math.max(Math.floor(Number(options.offset)) || 0, 0), body.length);
   // An offset inside a surrogate pair starts at the pair.
@@ -117,7 +131,7 @@ export function readPage(version: PageVersion, options: ReadPageOptions): Page {
   }
 
   const frame = (page: string, footer: string) =>
-    `${open}\n${head}\n${meta}\n\n${page}\n\n${links}${footer}\n${close}`;
+    `${open}\n${head}\n${meta}${link}\n\n${page}\n\n${links}${footer}\n${close}`;
   const room = READ_PAGE_CHARS - frame("", LONGEST_FOOTER).length;
   // The body's slice, escaped: escaping can lengthen it, so the slice shrinks until it fits.
   let length = Math.min(Math.max(room, 0), body.length - start);
@@ -154,7 +168,11 @@ export interface HitView {
   validFrom: number | null;
   invalidAt: number | null;
   current: boolean;
-  byKelpie: boolean;
+  byKelpie?: boolean;
+  /** A linha de proveniência da nota, no lugar do «written by Kelpie». */
+  provenance?: string;
+  /** Uma busca que pede as arquivadas diz quais são. */
+  archived?: boolean;
   /**
    * The version `memory_write` takes back (#297), or null when the hit shows a version a write has
    * replaced, or is about to.
@@ -177,7 +195,8 @@ export function renderHits(hits: readonly HitView[]): string {
       hit.scope,
       validity(hit.validFrom, hit.invalidAt),
       hit.current ? null : "replaced since",
-      writer(hit.byKelpie),
+      hit.archived ? "archived" : null,
+      writer(hit),
       hit.version === null ? null : `version ${hit.version}`,
     ]
       .filter((part) => part)

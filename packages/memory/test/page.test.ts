@@ -113,6 +113,44 @@ describe("readPage", () => {
   });
 });
 
+describe("readPage, no formato do Zikaron (#6)", () => {
+  it("diz que a nota está arquivada, a origem dela e o status de uma task", async () => {
+    const version = await versionOf(
+      "page-arquivada",
+      memory("Comprar pão", "Na padaria da esquina.", {
+        kind: "task",
+        status: "done",
+        archived: true,
+      }),
+    );
+    const page = readPage(version, {
+      offset: 0,
+      links: [],
+      version: "0123456789ab",
+      provenance: "origem: alan, conclusão, pendente",
+    });
+    expect(page.text).toContain(
+      "task · global · updated 2026-10-01 · explicit · archived · status done · origem: alan, conclusão, pendente · version 0123456789ab",
+    );
+    expect(page.text).not.toContain("Kelpie");
+    expect(page.text).not.toContain("\nlink ");
+  });
+
+  it("mostra o link de um documento numa linha própria, escapado", async () => {
+    const version = await versionOf(
+      "page-documento",
+      memory("Contrato do apartamento", "O contrato de aluguel.", {
+        kind: "document",
+        link: "https://example.com/doc?a=<memory-x>",
+      }),
+    );
+    const page = readPage(version, { offset: 0, links: [], version: "0123456789ab" });
+    expect(page.text).toContain("\nlink https://example.com/doc?a=&lt;memory-x>\n");
+    expect(page.text).toContain("not written by Kelpie");
+    expect(page.text.match(/<\s*\/?\s*memory/gi)).toHaveLength(2);
+  });
+});
+
 describe("readPage's progress", () => {
   it("always moves on, even past a lone half of a surrogate pair", () => {
     const version = {
@@ -207,6 +245,27 @@ describe("renderHits", () => {
     expect(text).toContain("replaced since");
     expect(text).toContain("O endereço antigo da Ana.");
     expect(renderHits([])).toBe("");
+  });
+
+  it("mostra a origem no lugar do «written by Kelpie», e diz quais estão arquivadas", () => {
+    const text = renderHits([
+      {
+        path: "memory/notes/cafe.md",
+        title: "Café",
+        abstract: "Sem açúcar.",
+        start: "",
+        kind: "note",
+        scope: "global",
+        validFrom: null,
+        invalidAt: null,
+        current: true,
+        archived: true,
+        provenance: "origem: dono",
+        version: "0123456789ab",
+      },
+    ]);
+    expect(text).toContain("note · global · archived · origem: dono · version 0123456789ab");
+    expect(text).not.toContain("Kelpie");
   });
 });
 

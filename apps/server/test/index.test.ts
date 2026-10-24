@@ -94,7 +94,7 @@ describe("the Worker's webhook route", () => {
     expect(response.status).toBe(400);
   });
 
-  it("answers 404 to any other method or path", async () => {
+  it("leaves any other method or path to the Access identity, which a request without it fails", async () => {
     for (const request of [
       new IncomingRequest(`${URL_BASE}/webhooks/github`),
       new IncomingRequest(`${URL_BASE}/webhooks/github`, { method: "PUT", body: push }),
@@ -103,7 +103,8 @@ describe("the Worker's webhook route", () => {
       new IncomingRequest(`${URL_BASE}/v1/read`, { method: "POST", body: "{}" }),
     ]) {
       const response = await worker.fetch(request, env);
-      expect(response.status, `${request.method} ${request.url}`).toBe(404);
+      expect(response.status, `${request.method} ${request.url}`).toBe(401);
+      expect(await response.json()).toEqual({ error: "unauthorized" });
     }
   });
 });

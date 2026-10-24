@@ -627,6 +627,16 @@ origin:
 - **O índice guarda o bloco em colunas** (`origin_client`, `origin_channel`, `origin_source`, `origin_evidence`, `origin_review`, `origin_taint`), para as regras de leitura do ADR-0001 virarem SQL, e `origin_invalid` quando havia um `origin` que não pôde ser lido: um bloco quebrado, ou um frontmatter ignorado inteiro com uma linha `origin:`. Uma versão assim nunca vale como do dono (schema 5).
 - **O arquivo não decide a confiança sozinho:** quem escreveu o blob conta mais que o bloco (ADR-0001 §3).
 
+### A linha de origem
+
+Cada nota que o recall, o núcleo, a busca, a leitura ou a lista de pendentes mostram diz de onde veio, na linha logo abaixo do cabeçalho, ou na linha do que ela é ([ADR-0001](adr/0001-identidade-e-confianca.md) §6):
+
+- `origem: dono`, quando a versão vale como do dono, pela configuração atual dos clientes;
+- `origem: <cliente>, conclusão|de fora|diz ser do dono[, pendente][, contaminação herdada]`, quando não vale;
+- `origem: desconhecida`, para uma versão do servidor sem o bloco `origin`.
+
+A linha só leva vocabulário fechado e o nome do cliente; a evidência, texto livre, fica de fora. Ela entra na conta do orçamento do recall e do núcleo, que continua valendo por construção.
+
 ### Tipos novos
 
 | Tipo | Pasta | Tier padrão | Campos próprios |

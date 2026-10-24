@@ -1,5 +1,24 @@
 import { DurableObject } from "cloudflare:workers";
-import { MemoryIndex } from "@zikaron/memory";
+import {
+  bodyWithoutHeading,
+  coreBlock,
+  coreCarries,
+  type IndexedVersion,
+  MemoryFormatError,
+  MemoryIndex,
+  type MemoryInput,
+  memoryPath,
+  needsMemory,
+  noteVersion,
+  pack,
+  readNote as parseNote,
+  provenanceLine,
+  type ReaderPolicy,
+  readPage,
+  renderHits,
+  retrieve,
+  writeMemory,
+} from "@zikaron/memory";
 import {
   type FileChange,
   GitHubVaultBackend,
@@ -8,8 +27,41 @@ import {
   type VaultFile,
 } from "@zikaron/vault";
 import { hasConflictMarkers } from "./conflicts.ts";
+import { type Client, type Clients, parseClients, readerPolicy } from "./identity.ts";
 import { mergeOwnerWins } from "./merge.ts";
+import {
+  archivedInput,
+  budgetOf,
+  buildMemory,
+  CORE_TOKENS,
+  type CoreResult,
+  claimProblems,
+  type ForgetNoteResult,
+  given,
+  MAX_CORE_TOKENS,
+  MAX_PATH_NUMBER,
+  MAX_QUESTION_CHARS,
+  MAX_RECALL_TOKENS,
+  MAX_SEARCH_K,
+  type MemoryWriteInput,
+  mayCreateIn,
+  type NoteClaim,
+  type NoteHit,
+  PENDING_LIMIT,
+  type PendingResult,
+  RECALL_LIMIT,
+  RECALL_TOKENS,
+  type ReadResult,
+  type RecallResult,
+  SEARCH_K,
+  type SearchResult,
+  sameVersion,
+  saysTheSame,
+  type WriteNoteResult,
+  writeClaim,
+} from "./notes.ts";
 import { isClientName, isWritable } from "./paths.ts";
+import { decideWrite, mayForget, type Previous, type WriteClaim } from "./rules.ts";
 
 /** Set by the owner at deploy, as Worker secrets (Kelpie's ADR-0021). */
 export interface VaultSecrets {
@@ -478,6 +530,622 @@ export class Vault extends DurableObject<VaultEnv> {
   async held(): Promise<HeldFile[]> {
     if (this.#backend() === null) return [];
     return this.#exec<{ path: string; at: number }>("SELECT path, at FROM held ORDER BY at");
+  }
+
+  // As operações de memória (#126 do Kelpie, sem modelos), por cliente. Cada uma recebe o nome do
+  // cliente que a rota autenticou e lê a configuração dele aqui. Toda leitura passa pela política
+  // de leitura do ADR-0001 §5: uma nota que o leitor não vê responde como uma nota que não existe.
+  // As leituras mostram só o que o índice tem, nunca uma gravação ainda na fila, que o leitor talvez
+  // não pudesse ver; uma gravação por cima de uma nota com outra gravação na fila é `changed`.
+
+  /** O cliente pelo nome, com a política de leitura dele; null quando a configuração não o tem. */
+  #who(name: unknown): { client: Client; policy: ReaderPolicy } | null {
+    if (typeof name !== "string") return null;
+    let clients: Clients;
+    try {
+      clients = parseClients(this.env.ZIKARON_CLIENTS);
+    } catch {
+      return null;
+    }
+    const client = [...clients.values()].find((each) => each.name === name);
+    return client === undefined ? null : { client, policy: readerPolicy(client, clients) };
+  }
+
+  /** O índice no head, para as operações de memória. */
+  async #memoryReady(): Promise<void> {
+    await this.#ready();
+    await this.#catchUp();
+  }
+
+  /** O arquivo mostra exatamente a versão do índice: nenhuma gravação dele espera na fila. */
+  async #synced(text: string | null, version: IndexedVersion): Promise<boolean> {
+    return text !== null && (await gitBlobSha(text)) === version.blobSha;
+  }
+
+  /**
+   * A versão atual de um caminho como a regra de gravação a lê (ADR-0001 §4): a confiança vem do
+   * índice, com a configuração de todos os clientes. Um merge da gravação do servidor com a edição
+   * do dono guarda as linhas do dono e conta como do dono, como no Kelpie (#160).
+   */
+  #previous(found: IndexedVersion, client: Client, policy: ReaderPolicy): Previous {
+    const trust = this.#memory.trust(found.path, policy) ?? { ownerGrade: false, tainted: true };
+    const merged =
+      this.#exec(
+        `SELECT 1 AS one FROM files f JOIN owner_merges m ON m.path = f.path AND m.content = f.content
+         WHERE f.path = ?`,
+        found.path,
+      ).length > 0;
+    return {
+      ownerGrade: trust.ownerGrade || merged,
+      tainted: trust.tainted,
+      archived: found.archived,
+      inCore: coreCarries(
+        { path: found.path, scope: found.scope, pinned: found.pinned },
+        client.name,
+      ),
+      pending: found.origin?.review === "pending",
+      client: found.origin?.client ?? null,
+    };
+  }
+
+  /** O cliente da última gravação na fila de um caminho, se alguma espera. */
+  #queuedBy(path: string): string | null {
+    return (
+      this.#exec<{ client: string }>(
+        "SELECT client FROM queue WHERE path = ? ORDER BY id DESC LIMIT 1",
+        path,
+      )[0]?.client ?? null
+    );
+  }
+
+  /**
+   * O núcleo (#112) para o cliente: as notas fixadas no escopo global ou no dele, o perfil do dono e
+   * o dele, só as que ele pode ver, cada uma com a origem. 1.000 tokens por padrão, 4.000 no máximo.
+   * Uma falha responde um bloco vazio, e a conversa segue sem ele.
+   */
+  async core(name: string, budgetTokens?: number | null): Promise<CoreResult> {
+    const empty: CoreResult = { text: "", tokens: 0, paths: [], omitted: 0 };
+    const who = this.#who(name);
+    const budget = budgetOf(budgetTokens, CORE_TOKENS, MAX_CORE_TOKENS);
+    if (who === null || budget === 0 || this.#backend() === null) return empty;
+    try {
+      await this.#memoryReady();
+      return coreBlock(this.#memory, {
+        agentId: who.client.name,
+        budgetTokens: budget,
+        now: Date.now(),
+        reader: who.policy,
+      });
+    } catch (error) {
+      console.error("Vault: the core failed", errorName(error));
+      return empty;
+    }
+  }
+
+  /**
+   * As memórias que respondem uma pergunta, no cercado (#110), sem vetores nem rerank: o portão do
+   * `needsMemory`, a busca com a política do leitor, sem as vencidas, e o empacotamento no orçamento
+   * (1.000 tokens por padrão, 8.000 no máximo). Uma falha responde um bloco vazio.
+   */
+  async recall(
+    name: string,
+    question: string,
+    options: {
+      budgetTokens?: number | null | undefined;
+      includeArchived?: boolean | null | undefined;
+    } = {},
+  ): Promise<RecallResult> {
+    const empty: RecallResult = { text: "", tokens: 0, paths: [] };
+    const who = this.#who(name);
+    const budget = budgetOf(options?.budgetTokens, RECALL_TOKENS, MAX_RECALL_TOKENS);
+    const text = typeof question === "string" ? question.slice(0, MAX_QUESTION_CHARS).trim() : "";
+    if (who === null || budget === 0 || !needsMemory(text) || this.#backend() === null) {
+      return empty;
+    }
+    try {
+      await this.#memoryReady();
+      const hits = retrieve(this.#memory, text, {
+        limit: RECALL_LIMIT,
+        notExpiredAt: Date.now(),
+        reader: who.policy,
+        includeArchived: options?.includeArchived === true,
+      });
+      return pack(this.#memory, hits, { budgetTokens: budget, reader: who.policy });
+    } catch (error) {
+      console.error("Vault: recall failed", errorName(error));
+      return empty;
+    }
+  }
+
+  /**
+   * As notas que respondem uma busca, para o `memory_search`: a mesma busca do recall, como lista
+   * no cercado. 3 por padrão, 10 no máximo. Uma nota com uma gravação na fila não dá versão.
+   */
+  async search(
+    name: string,
+    query: string,
+    options: { k?: number | null | undefined; includeArchived?: boolean | null | undefined } = {},
+  ): Promise<SearchResult> {
+    const who = this.#who(name);
+    if (who === null) return { ok: false, reason: "unauthorized" };
+    if (this.#backend() === null) return { ok: false, reason: "vault_off" };
+    const k = Math.min(
+      Math.max(Math.floor(Number(options?.k ?? SEARCH_K)) || SEARCH_K, 1),
+      MAX_SEARCH_K,
+    );
+    const text = typeof query === "string" ? query.slice(0, MAX_QUESTION_CHARS).trim() : "";
+    try {
+      await this.#memoryReady();
+      const hits =
+        text === ""
+          ? []
+          : retrieve(this.#memory, text, {
+              limit: RECALL_LIMIT,
+              notExpiredAt: Date.now(),
+              reader: who.policy,
+              includeArchived: options?.includeArchived === true,
+            }).slice(0, k);
+      const found = (
+        await Promise.all(
+          hits.map(async (hit) => {
+            const version = this.#memory.versionOf(hit.path, hit.commit);
+            if (version === null) return [];
+            const synced = await this.#synced(this.#visible(hit.path), version);
+            const note: NoteHit = {
+              path: hit.path,
+              title: hit.title,
+              abstract: hit.abstract,
+              kind: hit.kind,
+              scope: version.scope,
+              validFrom: version.validFrom,
+              invalidAt: version.invalidAt,
+              archived: version.archived,
+              origin: provenanceLine(this.#memory, version, who.policy),
+              version: hit.current && synced ? version.blobSha.slice(0, 12) : null,
+            };
+            return [{ note, start: bodyWithoutHeading(version.title, version.body).slice(0, 400) }];
+          }),
+        )
+      ).flat();
+      return {
+        ok: true,
+        text: renderHits(
+          found.map(({ note, start }) => ({
+            ...note,
+            current: true,
+            start,
+            provenance: note.origin,
+          })),
+        ),
+        notes: found.map(({ note }) => note),
+      };
+    } catch (error) {
+      console.error("Vault: search failed", errorName(error));
+      return { ok: false, reason: "unavailable" };
+    }
+  }
+
+  /**
+   * Uma nota, uma página por vez, para o `memory_read`: a versão do índice que o leitor pode ver,
+   * arquivada também, e na primeira página os links que ele pode seguir. Qualquer outra coisa é
+   * «not found», exista ou não.
+   */
+  async readNote(
+    name: string,
+    path: string,
+    options: { offset?: number | null | undefined } = {},
+  ): Promise<ReadResult> {
+    const notFound: ReadResult = { ok: false, reason: "not_found" };
+    const who = this.#who(name);
+    if (who === null) return { ok: false, reason: "unauthorized" };
+    if (typeof path !== "string" || path.length > MAX_PATH_CHARS) return notFound;
+    if (this.#backend() === null) return { ok: false, reason: "vault_off" };
+    const reader = who.policy;
+    try {
+      await this.#memoryReady();
+      const version = this.#memory.current(path, { reader });
+      // Uma remoção na fila já tirou a nota.
+      if (version === null || this.#visible(path) === null) return notFound;
+      const offset = Math.max(Math.floor(Number(options?.offset ?? 0)) || 0, 0);
+      const links: { title: string; path: string }[] = [];
+      if (offset === 0) {
+        const seen = new Set([path]);
+        for (const link of this.#memory.links(path, { reader })) {
+          if (link.path === null || seen.has(link.path)) continue;
+          seen.add(link.path);
+          const target = this.#memory.current(link.path, { reader });
+          if (target !== null) links.push({ title: target.title, path: link.path });
+        }
+      }
+      const shown = version.blobSha.slice(0, 12);
+      const page = readPage(version, {
+        offset,
+        links,
+        version: shown,
+        provenance: provenanceLine(this.#memory, version, reader),
+      });
+      return { ok: true, path, text: page.text, nextOffset: page.nextOffset, version: shown };
+    } catch (error) {
+      console.error("Vault: reading a note failed", errorName(error));
+      return { ok: false, reason: "unavailable" };
+    }
+  }
+
+  /**
+   * O escritor por trás do `memory_write` e do `/v1/write`, com a regra de gravação do ADR-0001 §4.
+   * - **Onde:** com `path`, uma nota que o leitor vê ganha a memória como nova versão, do mesmo tipo
+   *   e escopo, e guarda o que a memória deixou de fora. Sem `path`, a memória vai aonde o título a
+   *   põe, numerada quando o caminho está tomado, no escopo `global` por padrão, ou no do próprio
+   *   cliente, numa área ou num projeto.
+   * - **Versões (#297 do Kelpie):** `path` pede a versão que o leitor viu; uma versão gravada depois,
+   *   ou uma gravação ainda na fila, é `changed`, e nada é gravado.
+   * - **A regra decide** a origem e o nível, e recusa: rotina agendada (`cron`), `pinned`, nota do
+   *   dono, do núcleo ou arquivada. Por cima de uma versão contaminada, a nova herda a marca.
+   * - **Sem novidade:** a mesma versão de novo, ou uma nota que já diz o mesmo e o leitor vê, é
+   *   `unchanged`, e nada é gravado.
+   * Título, corpo, resumo, entidades e evidência perdem os segredos antes. O resumo do commit nunca
+   * nomeia a nota.
+   */
+  async writeNote(
+    name: string,
+    claim: NoteClaim,
+    input: MemoryWriteInput,
+  ): Promise<WriteNoteResult> {
+    const who = this.#who(name);
+    if (who === null) return { ok: false, reason: "unauthorized" };
+    const { client, policy } = who;
+    const claimed = claimProblems(claim);
+    if (claimed.length > 0) return { ok: false, reason: "invalid", problems: claimed };
+    if (typeof input !== "object" || input === null || Array.isArray(input)) {
+      return { ok: false, reason: "invalid", problems: ["the memory isn't valid"] };
+    }
+    // Uma rotina agendada, ou um pin, é recusado antes de tudo, sem commit.
+    const rule = writeClaim(claim, given(input.pinned) !== undefined);
+    const early = decideWrite(client, rule, null);
+    if (!early.ok) return { ok: false, reason: early.reason };
+    if (this.#backend() === null) return { ok: false, reason: "vault_off" };
+    const notFound: WriteNoteResult = { ok: false, reason: "not_found" };
+    const path = given(input.path);
+    try {
+      await this.#memoryReady();
+      if (path !== undefined && (typeof path !== "string" || path.length > MAX_PATH_CHARS)) {
+        return notFound;
+      }
+      const found = path === undefined ? null : this.#memory.current(path, { reader: policy });
+      if (path !== undefined && found === null) return notFound;
+      if (found !== null && !isWritable(client.name, found.path)) {
+        return { ok: false, reason: "scope_not_allowed" };
+      }
+      // A nota como o arquivo a mostra agora; uma remoção na fila já a tirou.
+      const text = found === null ? null : this.#visible(found.path);
+      if (found !== null && text === null) return notFound;
+      const before = found === null || text === null ? null : parseNote(found.path, text);
+      const problems = this.#writeProblems(input, found, policy);
+      if (problems.length > 0) return { ok: false, reason: "invalid", problems };
+      const at = new Date().toISOString();
+      // Confere todos os campos antes de qualquer leitura deles; o nível certo vem da regra.
+      await writeMemory(buildMemory(input, before, { level: "inferred" }), { at });
+      if (found === null || text === null) {
+        return await this.#writeNew(client, policy, rule, input, at);
+      }
+
+      const decision = decideWrite(client, rule, this.#previous(found, client, policy));
+      if (!decision.ok) return { ok: false, reason: decision.reason };
+      const memory = buildMemory(input, before, decision);
+      const written = (await writeMemory(memory, { at, existing: text })).text;
+      if (sameVersion(text, written)) {
+        return {
+          ok: true,
+          action: "unchanged",
+          path: found.path,
+          version: await noteVersion(text),
+        };
+      }
+      const expected = this.#versionProblem(input.version);
+      if (expected.problem !== null) {
+        return { ok: false, reason: "invalid", problems: [expected.problem] };
+      }
+      if (
+        !(await this.#synced(text, found)) ||
+        expected.version !== (await noteVersion(text)) ||
+        this.#visible(found.path) !== text
+      ) {
+        return { ok: false, reason: "changed" };
+      }
+      return await this.#queueNote(client.name, found.path, written, "Grava uma nota");
+    } catch (error) {
+      if (error instanceof MemoryFormatError) {
+        return { ok: false, reason: "invalid", problems: [...error.problems] };
+      }
+      console.error("Vault: writing a memory failed", errorName(error));
+      return { ok: false, reason: "unavailable" };
+    }
+  }
+
+  /** O que uma memória tem de errado antes da regra, como o Kelpie confere. */
+  #writeProblems(
+    input: MemoryWriteInput,
+    found: IndexedVersion | null,
+    policy: ReaderPolicy,
+  ): string[] {
+    const problems: string[] = [];
+    // Uma nota fundida em outra do escopo dela (#112): o que ela tinha está lá, e a próxima versão
+    // também. Uma nota que o leitor não vê não é nomeada.
+    const into = found === null ? null : this.#memory.mergedInto(found.path);
+    if (into !== null) {
+      problems.push(
+        this.#memory.current(into, { reader: policy }) === null
+          ? "the note was merged into another note"
+          : `the note was merged into ${into}: write to that one`,
+      );
+    }
+    if (found !== null && given(input.scope) !== undefined && input.scope !== found.scope) {
+      problems.push(`\`scope\` must be the note's own, ${found.scope}`);
+    }
+    if (found !== null && input.kind !== found.kind) {
+      problems.push(`\`kind\` must be the note's own, ${found.kind}`);
+    }
+    if (input.kind === "session") {
+      problems.push("`kind` can't be session: a conversation's pages are written for it");
+    }
+    if (typeof input.body === "string" && hasConflictMarkers(input.body)) {
+      problems.push("`body` holds merge conflict markers");
+    }
+    const entities = given(input.entities);
+    if (entities !== undefined && !Array.isArray(entities)) {
+      problems.push("`entities` must be a list of names");
+    }
+    if (input.kind === "event" && given(input.validFrom) === undefined && found === null) {
+      problems.push("an event needs `validFrom`, its date");
+    }
+    return problems;
+  }
+
+  /** A versão que uma gravação sobre uma nota encontrada nomeia, ou o que há de errado nela. */
+  #versionProblem(value: unknown): { version: string; problem: null } | { problem: string } {
+    const version = given(value);
+    if (typeof version !== "string" || version === "") {
+      return {
+        problem:
+          "`version` is required with `path`: pass the version memory_read or memory_search showed for the note",
+      };
+    }
+    if (!/^[0-9a-f]{12}$/.test(version)) {
+      return {
+        problem:
+          "`version` must be the 12 letters and digits memory_read or memory_search showed, as shown",
+      };
+    }
+    return { version, problem: null };
+  }
+
+  /**
+   * Uma nota nova: aonde o título a põe, numerada quando outra nota tem o caminho. Uma nota que já
+   * diz o mesmo é `unchanged` só quando o leitor a vê, ou quando é a gravação dele ainda na fila:
+   * nunca se revela uma nota que ele não vê.
+   */
+  async #writeNew(
+    client: Client,
+    policy: ReaderPolicy,
+    rule: WriteClaim,
+    input: MemoryWriteInput,
+    at: string,
+  ): Promise<WriteNoteResult> {
+    const decision = decideWrite(client, rule, null);
+    if (!decision.ok) return { ok: false, reason: decision.reason };
+    const memory = buildMemory(input, null, decision);
+    if (!mayCreateIn(client.name, memory.scope)) return { ok: false, reason: "scope_not_allowed" };
+    const text = (await writeMemory(memory, { at })).text;
+    const version = await noteVersion(text);
+    const twin = await this.#sameNote(
+      this.#memory
+        .titled(memory.title, { scopes: [memory.scope], reader: policy, limit: 20 })
+        .filter((hit) => hit.kind === memory.kind)
+        .map((hit) => hit.path),
+      memory,
+      client,
+      policy,
+    );
+    if (twin !== null) return { ok: true, action: "unchanged", ...twin };
+    const date = memory.kind === "event" ? memory.validFrom?.slice(0, 10) : undefined;
+    const own = memoryPath(memory.scope, memory.kind, memory.title, date);
+    for (let n = 1; n <= MAX_PATH_NUMBER; n += 1) {
+      const candidate = n === 1 ? own : own.replace(/\.md$/, `-${n}.md`);
+      // Daqui até a fila, nada espera: outra gravação não toma o caminho no meio.
+      if (this.#visible(candidate) === null) {
+        return await this.#queueNote(client.name, candidate, text, "Grava uma nota", version);
+      }
+      const same = await this.#sameNote([candidate], memory, client, policy);
+      if (same !== null) return { ok: true, action: "unchanged", ...same };
+    }
+    return {
+      ok: false,
+      reason: "invalid",
+      problems: ["too many notes share this title; choose another"],
+    };
+  }
+
+  /**
+   * A primeira destas notas que já diz a memória e que o leitor pode saber que existe: uma que ele
+   * vê, sem gravação na fila, ou a gravação dele mesmo ainda na fila.
+   */
+  async #sameNote(
+    paths: readonly string[],
+    memory: MemoryInput,
+    client: Client,
+    policy: ReaderPolicy,
+  ): Promise<{ path: string; version: string } | null> {
+    for (const path of paths) {
+      const text = this.#visible(path);
+      const note = text === null ? null : parseNote(path, text);
+      if (text === null || note === null || !saysTheSame(note, memory)) continue;
+      const indexed = this.#memory.current(path, { reader: policy });
+      const queuedBy = this.#queuedBy(path);
+      const known =
+        queuedBy === null
+          ? indexed !== null && (await this.#synced(text, indexed))
+          : queuedBy === client.name;
+      if (known) return { path, version: await noteVersion(text) };
+    }
+    return null;
+  }
+
+  /** Enfileira uma versão; o resumo do commit nunca nomeia a nota. */
+  async #queueNote(
+    client: string,
+    path: string,
+    content: string,
+    summary: string,
+    version?: string,
+  ): Promise<WriteNoteResult> {
+    const written = await this.write(client, [{ path, content }], summary);
+    if (written.ok) {
+      return {
+        ok: true,
+        action: "written",
+        path,
+        version: version ?? (await noteVersion(content)),
+      };
+    }
+    if (written.reason === "invalid_path") {
+      return { ok: false, reason: "invalid", problems: ["the note's path can't be written"] };
+    }
+    return { ok: false, reason: written.reason };
+  }
+
+  /**
+   * «Esqueça» vindo de um cliente (ADR-0001 §4): só uma nota que ele vê, gravada por ele ou à espera
+   * do «sim», fora do núcleo e que não vale como do dono. O git guarda a versão anterior.
+   */
+  async forgetNote(name: string, path: string): Promise<ForgetNoteResult> {
+    const notFound: ForgetNoteResult = { ok: false, reason: "not_found" };
+    const who = this.#who(name);
+    if (who === null) return { ok: false, reason: "unauthorized" };
+    if (typeof path !== "string" || path.length > MAX_PATH_CHARS) return notFound;
+    if (this.#backend() === null) return { ok: false, reason: "vault_off" };
+    const { client, policy } = who;
+    try {
+      await this.#memoryReady();
+      const found = this.#memory.current(path, { reader: policy });
+      const text = this.#visible(path);
+      if (found === null || text === null) return notFound;
+      if (!isWritable(client.name, path)) return { ok: false, reason: "scope_not_allowed" };
+      const previous = this.#previous(found, client, policy);
+      if (!mayForget(client, previous)) {
+        const reason = previous.ownerGrade
+          ? "owners_note"
+          : previous.inCore
+            ? "core_note"
+            : "not_own";
+        return { ok: false, reason };
+      }
+      if (!(await this.#synced(text, found)) || this.#visible(path) !== text) {
+        return { ok: false, reason: "changed" };
+      }
+      const written = await this.write(client.name, [{ path, content: null }], "Remove uma nota");
+      if (written.ok) return { ok: true, path };
+      return { ok: false, reason: written.reason === "vault_off" ? "vault_off" : "unavailable" };
+    } catch (error) {
+      console.error("Vault: forgetting a note failed", errorName(error));
+      return { ok: false, reason: "unavailable" };
+    }
+  }
+
+  /**
+   * Arquiva uma nota (#6): uma nova versão dela inteira com `archived: true`, pela mesma regra de
+   * gravação, a partir da versão que o leitor viu. Ela sai da busca, do recall e do núcleo, e
+   * continua legível pelo caminho.
+   */
+  async archiveNote(
+    name: string,
+    claim: NoteClaim,
+    path: string,
+    version: string,
+  ): Promise<WriteNoteResult> {
+    const notFound: WriteNoteResult = { ok: false, reason: "not_found" };
+    const who = this.#who(name);
+    if (who === null) return { ok: false, reason: "unauthorized" };
+    const claimed = claimProblems(claim);
+    if (claimed.length > 0) return { ok: false, reason: "invalid", problems: claimed };
+    const rule = writeClaim(claim, false);
+    const early = decideWrite(who.client, rule, null);
+    if (!early.ok) return { ok: false, reason: early.reason };
+    if (typeof path !== "string" || path.length > MAX_PATH_CHARS) return notFound;
+    if (this.#backend() === null) return { ok: false, reason: "vault_off" };
+    const { client, policy } = who;
+    try {
+      await this.#memoryReady();
+      const found = this.#memory.current(path, { reader: policy });
+      const text = this.#visible(path);
+      if (found === null || text === null) return notFound;
+      if (!isWritable(client.name, path)) return { ok: false, reason: "scope_not_allowed" };
+      const decision = decideWrite(client, rule, this.#previous(found, client, policy));
+      if (!decision.ok) return { ok: false, reason: decision.reason };
+      const expected = this.#versionProblem(version);
+      if (expected.problem !== null) {
+        return { ok: false, reason: "invalid", problems: [expected.problem] };
+      }
+      const before = parseNote(path, text);
+      if (
+        before === null ||
+        !(await this.#synced(text, found)) ||
+        expected.version !== (await noteVersion(text))
+      ) {
+        return { ok: false, reason: "changed" };
+      }
+      const memory = { ...buildMemory(archivedInput(before), before, decision), archived: true };
+      const written = (await writeMemory(memory, { at: new Date().toISOString(), existing: text }))
+        .text;
+      if (this.#visible(path) !== text) return { ok: false, reason: "changed" };
+      return await this.#queueNote(client.name, path, written, "Arquiva uma nota");
+    } catch (error) {
+      if (error instanceof MemoryFormatError) {
+        return { ok: false, reason: "invalid", problems: [...error.problems] };
+      }
+      console.error("Vault: archiving a note failed", errorName(error));
+      return { ok: false, reason: "unavailable" };
+    }
+  }
+
+  /** As notas que esperam o «sim» do dono e que o cliente pode ver, as mais recentes primeiro. */
+  async pending(name: string): Promise<PendingResult> {
+    const who = this.#who(name);
+    if (who === null) return { ok: false, reason: "unauthorized" };
+    if (this.#backend() === null) return { ok: false, reason: "vault_off" };
+    try {
+      await this.#memoryReady();
+      const versions = this.#memory
+        .pending({ reader: who.policy, limit: PENDING_LIMIT })
+        .map((hit) => this.#memory.versionOf(hit.path, hit.commit))
+        .filter((version): version is IndexedVersion => version !== null);
+      return {
+        ok: true,
+        text: renderHits(
+          versions.map((version) => ({
+            path: version.path,
+            title: version.title,
+            abstract: version.abstract,
+            start: bodyWithoutHeading(version.title, version.body).slice(0, 400),
+            kind: version.kind,
+            scope: version.scope,
+            validFrom: version.validFrom,
+            invalidAt: version.invalidAt,
+            current: true,
+            provenance: provenanceLine(this.#memory, version, who.policy),
+            version: null,
+          })),
+        ),
+        notes: versions.map((version) => ({
+          path: version.path,
+          title: version.title,
+          client: version.origin?.client ?? null,
+          source: version.origin?.source ?? null,
+        })),
+      };
+    } catch (error) {
+      console.error("Vault: listing pending notes failed", errorName(error));
+      return { ok: false, reason: "unavailable" };
+    }
   }
 
   /** Sets the alarm to `at`, unless one is due sooner; never before a pending retry. */

@@ -62,6 +62,28 @@ export function parseOrigin(value: unknown): Origin | null {
   };
 }
 
+const SOURCE_LABELS: Record<Source, string> = {
+  owner: "diz ser do dono",
+  agent: "conclusão",
+  external: "de fora",
+};
+
+/**
+ * A linha de proveniência de uma nota no recall, no núcleo, na leitura e na busca (ADR-0001 §6):
+ * `origem: dono` quando a versão vale como do dono; senão o cliente, de onde veio e se espera o
+ * «sim». Só vocabulário fechado e o nome do cliente, que segue CLIENT_NAME: a evidência, texto
+ * livre, fica de fora, para nada de uma nota entrar no cercado por aqui.
+ */
+export function provenance(origin: Origin | null, ownerGrade: boolean): string {
+  if (ownerGrade) return "origem: dono";
+  if (origin === null) return "origem: desconhecida";
+  const client = CLIENT_NAME.test(origin.client) ? origin.client : "?";
+  const parts = [client, SOURCE_LABELS[origin.source]];
+  if (origin.review !== null) parts.push("pendente");
+  if (origin.taint !== null) parts.push("contaminação herdada");
+  return `origem: ${parts.join(", ")}`;
+}
+
 /** O bloco como ele vai para o frontmatter, sem as chaves vazias, numa ordem fixa. */
 export function originFields(origin: Origin): Record<string, string> {
   const fields: Record<string, string> = {

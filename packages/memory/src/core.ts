@@ -10,6 +10,8 @@ import {
   HEADING_TITLE_CHARS,
   inert,
   oneLine,
+  provenanceLine,
+  UNCLAIMED,
 } from "./retrieve.ts";
 import type { ReaderPolicy } from "./visibility.ts";
 
@@ -21,7 +23,10 @@ export interface CoreOptions {
   budgetTokens: number;
   /** A note that stopped being true before this stays out, as recall leaves it out. */
   now: number;
-  /** Only the notes this reader may see (ADR-0001 §5). */
+  /**
+   * Only the notes this reader may see (ADR-0001 §5); its clients' settings also say which notes
+   * count as the owner's in each note's provenance line (§6).
+   */
   reader?: ReaderPolicy;
 }
 
@@ -64,9 +69,10 @@ const footer = (count: number) => `${count} ${count === 1 ? "note" : "notes"} di
 /**
  * The core as one block, within a token budget: the notes the owner pinned in the global scope or
  * the agent's own, then the owner's profile, then the agent's self-model (its own `profile/`
- * folder), each by path, each note once. Notes go in whole: one that doesn't fit is skipped and
- * counted, and the next one tried. The block is fenced as #110's is, with a random id, so a note
- * can't step out of it or pass for another. The budget holds by construction.
+ * folder), each by path, each note once, with its provenance under its heading (ADR-0001 §6).
+ * Notes go in whole: one that doesn't fit is skipped and counted, and the next one tried. The
+ * block is fenced as #110's is, with a random id, so a note can't step out of it or pass for
+ * another. The budget holds by construction.
  */
 export function coreBlock(index: MemoryIndex, options: CoreOptions): Core {
   const empty: Core = { text: "", tokens: 0, paths: [], omitted: 0 };
@@ -93,7 +99,8 @@ export function coreBlock(index: MemoryIndex, options: CoreOptions): Core {
       options.reader === undefined ? {} : { reader: options.reader },
     );
     if (version === null) continue;
-    const head = `## ${oneLine(version.title, HEADING_TITLE_CHARS)} (${oneLine(path, HEADING_PATH_CHARS)}) [${id}]\n`;
+    const origin = provenanceLine(index, version, options.reader ?? UNCLAIMED);
+    const head = `## ${oneLine(version.title, HEADING_TITLE_CHARS)} (${oneLine(path, HEADING_PATH_CHARS)}) [${id}]\n${origin}\n`;
     const entry = `${head}${inert(bodyWithoutHeading(version.title, version.body))}`;
     const cost = entry.length + (entries.length > 0 ? 2 : 0);
     if (cost > left) {
