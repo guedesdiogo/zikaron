@@ -5,7 +5,8 @@ import { foldKey } from "./entities.ts";
 import { gitBlobSha } from "./hash.ts";
 import type { Kind, Scope, Tier } from "./layout.ts";
 import type { LinkBy, LinkKind } from "./markdown.ts";
-import { type Level, readNote } from "./note.ts";
+import { type Level, readNote, type Status } from "./note.ts";
+import type { Channel, Origin, Source } from "./origin.ts";
 import { instantOf } from "./time.ts";
 
 export type SqlValue = ArrayBuffer | string | number | null;
@@ -71,6 +72,12 @@ export interface IndexedVersion {
   title: string;
   abstract: string | null;
   body: string;
+  /** Out of lookups unless asked for (#6). */
+  archived: boolean;
+  status: Status | null;
+  link: string | null;
+  /** The version's provenance as its file states it (ADR-0001 §3). */
+  origin: Origin | null;
   frontmatter: Record<string, unknown>;
   warnings: string[];
 }
@@ -97,6 +104,8 @@ export interface SearchOptions {
    * never expires, and one that becomes valid later stays.
    */
   notExpiredAt?: number;
+  /** Archived notes are left out unless asked for directly (#6). */
+  includeArchived?: boolean;
 }
 
 export interface SearchHit {
@@ -126,7 +135,8 @@ export interface IndexDump {
   links: { path: string; commit: string; kind: string; by: string; target: string }[];
 }
 
-export const SCHEMA_VERSION = 3;
+/** Version 4 (#6) added `archived`, `status`, `link` and the `origin` columns. */
+export const SCHEMA_VERSION = 4;
 
 const DERIVED_SCHEMA = `
 CREATE TABLE commits (
@@ -165,6 +175,15 @@ CREATE TABLE versions (
   title_key TEXT NOT NULL,
   frontmatter TEXT NOT NULL,
   warnings TEXT NOT NULL,
+  archived INTEGER NOT NULL,
+  status TEXT,
+  link TEXT,
+  origin_client TEXT,
+  origin_channel TEXT,
+  origin_source TEXT,
+  origin_evidence TEXT,
+  origin_review TEXT,
+  origin_taint TEXT,
   UNIQUE (path, commit_sha)
 );
 CREATE UNIQUE INDEX versions_current_path ON versions (path) WHERE is_current = 1;
@@ -303,6 +322,15 @@ function versionFilter(options: SearchOptions, includeMerged = false): [string, 
     filters.push("(v.invalid_at IS NULL OR v.invalid_at > ?)");
     bindings.push(options.notExpiredAt);
   }
+  if (!options.includeArchived) {
+    filters.push("v.archived = 0");
+    // A note archived now stays out of a lookup of the past too, as a merge mark is read now (#6).
+    if (options.asOf !== undefined) {
+      filters.push(
+        "NOT EXISTS (SELECT 1 FROM versions c WHERE c.path = v.path AND c.is_current = 1 AND c.archived = 1)",
+      );
+    }
+  }
   if (!includeMerged) filters.push(NOT_MERGED);
   return [filters.join(" AND "), bindings];
 }
@@ -366,12 +394,22 @@ type VersionRow = {
   body: string;
   frontmatter: string;
   warnings: string;
+  archived: number;
+  status: string | null;
+  link: string | null;
+  origin_client: string | null;
+  origin_channel: string | null;
+  origin_source: string | null;
+  origin_evidence: string | null;
+  origin_review: string | null;
+  origin_taint: string | null;
 };
 
 const VERSION_COLUMNS = `v.path, v.commit_sha, v.blob_sha, v.supersedes_commit, v.is_current, v.recorded_at,
   v.replaced_at, v.replaced_by_commit, v.memory_id, v.scope, v.kind, v.tier, v.level, v.confidence,
   v.evergreen, v.pinned, v.valid_from, v.invalid_at, v.title, v.abstract, v.body, v.frontmatter,
-  v.warnings`;
+  v.warnings, v.archived, v.status, v.link, v.origin_client, v.origin_channel, v.origin_source,
+  v.origin_evidence, v.origin_review, v.origin_taint`;
 
 function toVersion(row: VersionRow): IndexedVersion {
   return {
@@ -396,6 +434,20 @@ function toVersion(row: VersionRow): IndexedVersion {
     title: row.title,
     abstract: row.abstract,
     body: row.body,
+    archived: row.archived === 1,
+    status: row.status as Status | null,
+    link: row.link,
+    origin:
+      row.origin_client === null
+        ? null
+        : {
+            client: row.origin_client,
+            channel: row.origin_channel as Channel,
+            source: row.origin_source as Source,
+            evidence: row.origin_evidence,
+            review: row.origin_review as "pending" | null,
+            taint: row.origin_taint as "inherited" | null,
+          },
     frontmatter: JSON.parse(row.frontmatter) as Record<string, unknown>,
     warnings: JSON.parse(row.warnings) as string[],
   };
@@ -509,8 +561,10 @@ export class MemoryIndex {
           `INSERT INTO versions (path, commit_sha, commit_seq, blob_sha, supersedes_commit, is_current,
              recorded_at, memory_id, scope, kind, tier, level, confidence, evergreen, pinned,
              valid_from, invalid_at, title, abstract, body, path_search, link_path, link_name,
-             title_key, frontmatter, warnings)
-           VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             title_key, frontmatter, warnings, archived, status, link, origin_client, origin_channel,
+             origin_source, origin_evidence, origin_review, origin_taint)
+           VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+             ?, ?, ?, ?, ?, ?, ?)
            RETURNING rowid`,
           change.path,
           commit.sha,
@@ -537,6 +591,15 @@ export class MemoryIndex {
           titleKey(note.title),
           JSON.stringify(note.frontmatter),
           JSON.stringify(note.warnings),
+          note.archived ? 1 : 0,
+          note.status,
+          note.link,
+          note.origin?.client ?? null,
+          note.origin?.channel ?? null,
+          note.origin?.source ?? null,
+          note.origin?.evidence ?? null,
+          note.origin?.review ?? null,
+          note.origin?.taint ?? null,
         )[0]?.rowid;
         if (rowid === undefined) throw new Error("the version insert returned no row id");
         for (const entity of note.entities) {
@@ -622,7 +685,7 @@ export class MemoryIndex {
   embeddingTexts(model: string, limit = 256): { blobSha: string; text: string }[] {
     return this.#exec<{ blob_sha: string; title: string; abstract: string | null; body: string }>(
       `SELECT v.blob_sha, v.title, v.abstract, v.body FROM versions v
-       WHERE v.is_current = 1 AND ${NOT_MERGED}
+       WHERE v.is_current = 1 AND v.archived = 0 AND ${NOT_MERGED}
          AND NOT EXISTS (SELECT 1 FROM embeddings e WHERE e.blob_sha = v.blob_sha AND e.model = ?)
        GROUP BY v.blob_sha ORDER BY v.blob_sha LIMIT ?`,
       model,
@@ -732,7 +795,7 @@ export class MemoryIndex {
               -- Too deep for SQLite's JSON functions: no 'updated', rather than no report.
               CASE WHEN json_valid(frontmatter) THEN json_extract(frontmatter, '$.updated') END AS updated,
               blob_sha
-       FROM versions v WHERE is_current = 1 AND ${NOT_MERGED} ORDER BY path`,
+       FROM versions v WHERE is_current = 1 AND archived = 0 AND ${NOT_MERGED} ORDER BY path`,
     ).map((row) => ({
       path: row.path,
       scope: row.scope,
@@ -877,9 +940,13 @@ export class MemoryIndex {
       validAt?: number;
       notExpiredAt?: number;
       scopes?: readonly Scope[];
+      includeArchived?: boolean;
     } = {},
   ): SearchHit[] {
-    const scoped = options.scopes === undefined ? {} : { scopes: options.scopes };
+    const scoped = {
+      ...(options.scopes === undefined ? {} : { scopes: options.scopes }),
+      ...(options.includeArchived ? { includeArchived: true } : {}),
+    };
     const [inScopes, scopeBindings] = versionFilter(scoped);
     const exists = this.#exec(
       `SELECT 1 AS one FROM versions v WHERE v.path = ? AND ${inScopes}`,
@@ -957,9 +1024,12 @@ export class MemoryIndex {
     target: string,
     options: { scopes?: readonly Scope[] } = {},
   ): string | null {
-    // A link names a file, as in Obsidian, merged into another or not.
+    // A link names a file, as in Obsidian, merged into another or archived (#6) or not.
     const [filter, bindings] = versionFilter(
-      options.scopes === undefined ? {} : { scopes: options.scopes },
+      {
+        includeArchived: true,
+        ...(options.scopes === undefined ? {} : { scopes: options.scopes }),
+      },
       true,
     );
     const candidates = this.#exec<{ path: string }>(

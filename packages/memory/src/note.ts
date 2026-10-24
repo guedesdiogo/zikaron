@@ -17,6 +17,7 @@ import {
   splitFrontmatter,
   valueLinks,
 } from "./markdown.ts";
+import { type Origin, parseOrigin, UNPRINTABLE } from "./origin.ts";
 import { instantOf, isDateTime } from "./time.ts";
 
 /** How a memory was reached: said by the owner, deduced from what was said, or guessed. */
@@ -35,6 +36,21 @@ export const MAX_LINKS = 500;
 const RESERVED_KEYS = ["__proto__", "constructor", "prototype"];
 
 const MEMORY_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+
+/** Where a task or a delegation stands (#6). */
+export const STATUSES = ["open", "done"] as const;
+export type Status = (typeof STATUSES)[number];
+
+/** A document's link: one http(s) URL, without spaces, controls or bidirectional marks (#6). */
+export const MAX_LINK_LENGTH = 2_000;
+export const isLink = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length <= MAX_LINK_LENGTH &&
+  /^https?:\/\/[^\s]+$/.test(value) &&
+  !UNPRINTABLE.test(value);
+
+/** The kinds `status` belongs to; on any other kind it is the owner's own key (#6). */
+export const STATUS_KINDS: readonly Kind[] = ["task", "delegation"];
 
 export function isMemoryId(value: unknown): value is string {
   return typeof value === "string" && MEMORY_ID.test(value);
@@ -64,6 +80,13 @@ export interface Note {
   pinned: boolean;
   abstract: string | null;
   updated: string | null;
+  /** Out of recall, search and the core; read only when asked for directly (#6). */
+  archived: boolean;
+  status: Status | null;
+  /** A document's link (#6). */
+  link: string | null;
+  /** Who wrote this version, through which channel, and from where (ADR-0001 §3). */
+  origin: Origin | null;
   /** Every key, unknown ones included, as parsed. */
   frontmatter: Record<string, unknown>;
   body: string;
@@ -138,6 +161,15 @@ const stringList =
     )
       ? (value as string[])
       : null;
+
+/** A document's link, with a warning when it has none: a document is kept by its link (#6). */
+function documentLink(frontmatter: Frontmatter, warnings: string[]): string | null {
+  const link = field(frontmatter, "link", warnings, (value) => (isLink(value) ? value : null));
+  if (link === null && (frontmatter.link === undefined || frontmatter.link === null)) {
+    warnings.push("a document has no `link`");
+  }
+  return link;
+}
 
 /** Reads a vault file into a note; null when the path is outside the memory index. */
 export function readNote(path: string, text: string): Note | null {
@@ -262,6 +294,13 @@ export function readNote(path: string, text: string): Note | null {
     updated: field(frontmatter, "updated", warnings, (value) =>
       typeof value === "string" && isDateTime(value) ? value : null,
     ),
+    archived: flag("archived"),
+    // On other kinds, `status` and `link` are the owner's own keys, kept and not read (#6).
+    status: STATUS_KINDS.includes(kind)
+      ? field(frontmatter, "status", warnings, oneOf(STATUSES))
+      : null,
+    link: kind === "document" ? documentLink(frontmatter, warnings) : null,
+    origin: field(frontmatter, "origin", warnings, parseOrigin),
     frontmatter,
     body,
     links,

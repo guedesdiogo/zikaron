@@ -3,7 +3,18 @@ import { MAX_ENTITIES, normalizeEntities } from "./entities.ts";
 import { shortSha256 } from "./hash.ts";
 import { defaultTier, isScope, KINDS, type Kind, type Scope, TIERS, type Tier } from "./layout.ts";
 import { splitFrontmatter } from "./markdown.ts";
-import { isMemoryId, LEVELS, type Level, MAX_FRONTMATTER_LENGTH, MAX_SOURCES } from "./note.ts";
+import {
+  isLink,
+  isMemoryId,
+  LEVELS,
+  type Level,
+  MAX_FRONTMATTER_LENGTH,
+  MAX_SOURCES,
+  STATUS_KINDS,
+  STATUSES,
+  type Status,
+} from "./note.ts";
+import { type Origin, originFields, parseOrigin } from "./origin.ts";
 import { instantOf, isDateTime } from "./time.ts";
 
 /** A memory as Kelpie writes it. Every field is checked: Kelpie's own writes are strict. */
@@ -29,7 +40,18 @@ export interface MemoryInput {
   abstract?: string;
   /** Notes this one contradicts, by name or vault path, written as wikilinks. */
   contradicts?: string[];
+  /** Out of recall, search and the core (#6). */
+  archived?: boolean;
+  /** Only on a `task` or a `delegation` (#6). */
+  status?: Status;
+  /** Required on a `document`: its http(s) link (#6). */
+  link?: string;
+  /** Set by the server, never by a client (ADR-0001 §3). */
+  origin?: Origin;
 }
+
+/** A document keeps its name, link and subject, never its content (#6). */
+export const MAX_DOCUMENT_BODY = 2_000;
 
 export class MemoryFormatError extends Error {
   readonly problems: readonly string[];
@@ -106,6 +128,31 @@ function check(input: MemoryInput, at: string): string[] {
     )
   ) {
     problems.push("`evergreen` and `pinned` must be true or false");
+  }
+  if (input.archived !== undefined && typeof input.archived !== "boolean") {
+    problems.push("`archived` must be true or false");
+  }
+  if (input.status !== undefined) {
+    if (!STATUSES.includes(input.status)) problems.push("`status` must be open or done");
+    else if (!STATUS_KINDS.includes(input.kind)) {
+      problems.push("`status` is only for a task or a delegation");
+    }
+  }
+  if (input.link !== undefined && !isLink(input.link)) {
+    problems.push("`link` must be one http(s) URL");
+  } else if (input.link !== undefined && input.kind !== "document") {
+    problems.push("`link` is only for a document");
+  }
+  if (input.kind === "document") {
+    if (input.link === undefined) problems.push("a document needs its `link`");
+    if (typeof input.body === "string" && input.body.trim().length > MAX_DOCUMENT_BODY) {
+      problems.push(
+        `a document's body is its subject, up to ${MAX_DOCUMENT_BODY} characters, never its content`,
+      );
+    }
+  }
+  if (input.origin !== undefined && parseOrigin(input.origin) === null) {
+    problems.push("`origin` is invalid");
   }
   if (typeof at !== "string" || !isDateTime(at) || !at.endsWith("Z")) {
     problems.push("`at` must be a UTC date-time");
@@ -185,6 +232,11 @@ export async function writeMemory(
         ? { contradicts: input.contradicts.map((target) => `[[${target.trim()}]]`) }
         : undefined,
     ],
+    // On other kinds these keys are the owner's own, left as they are.
+    ...(STATUS_KINDS.includes(input.kind) ? [["status", input.status] as [string, unknown]] : []),
+    ...(input.kind === "document" ? [["link", input.link] as [string, unknown]] : []),
+    ["archived", input.archived || undefined],
+    ["origin", input.origin === undefined ? undefined : originFields(input.origin)],
     ["updated", options.at],
   ];
   for (const [key, value] of fields) {

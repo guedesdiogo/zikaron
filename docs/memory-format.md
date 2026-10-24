@@ -605,6 +605,52 @@ Before a new memory is written, `decideWrite` says whether it is news (#111). A 
   - a scope that is the turn's, never a model's choice;
   - on `UPDATE` and `SUPERSEDE`, the note's `pinned` and `evergreen` carried over. The rule's `NOOP` compares title, body and validity only.
 
+## Zikaron: origem, tipos novos e arquivo
+
+O que o Zikaron acrescenta ao formato (#6), além do que vem do Kelpie acima.
+
+### O bloco `origin`
+
+A proveniência de cada versão que o servidor grava ([ADR-0001](adr/0001-identidade-e-confianca.md) §3). Só o servidor o escreve.
+
+```yaml
+origin:
+  client: noah            # o cliente da credencial; nomeia o escopo agent/<cliente>
+  channel: provider       # provider | tool
+  source: owner           # owner | agent | external
+  evidence: "telegram:msg/123"   # opcional, uma linha de até 300 caracteres
+  review: pending         # opcional: espera o «sim» do dono
+  taint: inherited        # opcional: gravada por cima de uma versão contaminada
+```
+
+- **O vocabulário é fechado.** Uma chave desconhecida, um valor fora da lista, um `client` fora do padrão (minúsculas, dígitos e hífen, até 40) ou uma evidência com quebra de linha invalidam o bloco inteiro, com aviso. A nota continua indexada.
+- **O índice guarda o bloco em colunas** (`origin_client`, `origin_channel`, `origin_source`, `origin_evidence`, `origin_review`, `origin_taint`), para as regras de leitura do ADR-0001 virarem SQL.
+- **O arquivo não decide a confiança sozinho:** quem escreveu o blob conta mais que o bloco (ADR-0001 §3).
+
+### Tipos novos
+
+| Tipo | Pasta | Tier padrão | Campos próprios |
+|---|---|---|---|
+| `task`: pendência sem hora | `tasks/` | episodic | `status: open\|done` |
+| `document`: um documento guardado por nome, link e assunto | `documents/` | semantic | `link`, obrigatório |
+| `delegation`: o que está com o Alan | `delegations/` | episodic | `status: open\|done` |
+
+- **`status`** só vale em `task` e `delegation`, e **`link`** só em `document`. O escritor os recusa nos outros tipos. Neles, uma chave `status` ou `link` é do dono: o leitor não a lê e o escritor não a apaga.
+- **`link`** é uma URL http(s), sem espaços, controles nem marcas bidirecionais, de até 2.000 caracteres. Um `document` sem ela é recusado pelo escritor; o leitor o indexa com um aviso.
+- **O corpo de um `document` é o assunto,** até 2.000 caracteres, nunca o conteúdo: a verdade é o Drive ou o Gmail.
+- **`commitment`** continua, para o contexto de um evento cuja verdade é a Agenda.
+
+### O arquivo
+
+`archived: true` arquiva a nota: «arquivados devem ser acessados apenas quando solicitado diretamente» (o Diogo, Q5).
+- **Sai de:** a busca por texto, por título, por entidade e por vetor; os vizinhos do grafo (a nota arquivada também não tem vizinhos); o núcleo, mesmo pinned; os jobs do ciclo de vida.
+- **Também no passado:** uma busca com `asOf` deixa de fora a nota arquivada hoje, como uma marca de merge é lida como está hoje.
+- **Continua em:** o mesmo caminho e a mesma cadeia de versões; a leitura pelo caminho; a resolução de links, para um link não passar a apontar para um homônimo; uma busca, ou os vizinhos de uma nota, que peçam `includeArchived`.
+- **Dito de novo:** um fato igual a uma nota arquivada não é «já na memória»; vira uma nota nova, viva, num caminho numerado.
+- **Por que uma flag e não uma pasta:** mover o arquivo mudaria o caminho, e o caminho é a identidade da nota.
+- **Uma nova versão leva o que a anterior tinha:** como `pinned` e `evergreen`, quem grava por cima de uma nota lê a versão atual e repassa `status`, `link`, `archived` e `origin`. O escritor trata a entrada como a versão inteira e apaga o que ela deixa de fora. Quem grava calcula também o `taint: inherited` (ADR-0001 §5).
+- **O schema do índice passou para 4:** um índice de antes recomeça vazio e se refaz do cofre.
+
 ## Credits
 
 The design follows [ai-memory](https://github.com/akitaonrails/ai-memory) at [`fc4da03`](https://github.com/akitaonrails/ai-memory/tree/fc4da03) (MIT, © 2026 Fabio Akita): versioned pages, FTS5 with diacritics folded, entity normalization, typed edges with a closed vocabulary, link extraction that skips code, and hybrid retrieval. Files translated from it carry its notice. The reference checks are on [#107](https://github.com/guedesdiogo/kelpie/issues/107#issuecomment-6010168197) and [#110](https://github.com/guedesdiogo/kelpie/issues/110#issuecomment-6012868696). The retrieval gate follows [hermes-agent](https://github.com/NousResearch/hermes-agent) at `86bdb75` (MIT). The lifecycle's retention score follows ai-memory's decay at [`b8e839f`](https://github.com/akitaonrails/ai-memory/blob/b8e839f6a9aee3e58f49dbc588e9107f8820e695/crates/ai-memory-store/src/decay.rs); its reference check is on [#111](https://github.com/guedesdiogo/kelpie/issues/111#issuecomment-6022538685).
