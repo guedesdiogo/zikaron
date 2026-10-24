@@ -211,7 +211,7 @@ describe("Vault", () => {
       "/memory/a.md",
       "memory/notes/what?.md",
       "memory/notes/trailing./a.md",
-      "memory/notes/‮evil.md",
+      "memory/notes/\u202Eevil.md",
       "memory/notes/CON.md",
       `memory/${"a".repeat(300)}.md`,
       // The server's own files, such as the memory report.

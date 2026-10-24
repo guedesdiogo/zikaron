@@ -33,7 +33,12 @@ describe("Vault forget", () => {
           "INSERT INTO conflicts (client, path, content, reason, at) VALUES ('alfa', ?, 'x', 'owner_won', 1)",
           path,
         );
-        state.storage.sql.exec("INSERT INTO owner_merges (path, content) VALUES (?, 'x')", path);
+        // A marca com o texto que o arquivo terá depois do push: a poda do sync só leva marcas velhas.
+        state.storage.sql.exec(
+          "INSERT INTO owner_merges (path, content) VALUES (?, ?)",
+          path,
+          path === bia ? "# Bia\n\nNova.\n" : "x",
+        );
         state.storage.sql.exec("INSERT INTO authored (path, blob_sha) VALUES (?, 'sha')", path);
       }
       // Uma retenção cujo arquivo já mudou: nada mais a mostra.

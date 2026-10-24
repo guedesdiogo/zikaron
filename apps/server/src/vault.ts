@@ -332,6 +332,9 @@ export class Vault extends DurableObject<VaultEnv> {
     summary: string,
   ): Promise<WriteResult> {
     if (this.#backend() === null) return { ok: false, reason: "vault_off" };
+    // Uma gravação num cofre nunca sincronizado precisa da base: sem ela, o merge com o que já está
+    // no cofre toma a versão do cofre inteira e põe a gravação de lado.
+    await this.#ready();
     const valid =
       isClientName(client) &&
       Array.isArray(changes) &&
@@ -377,6 +380,13 @@ export class Vault extends DurableObject<VaultEnv> {
 
   override async alarm(): Promise<void> {
     if (this.#backend() === null) return;
+    // O índice alcança o head quando um esquema novo o recomeçou ou uma queda o deixou atrás. Vem
+    // antes do trabalho do GitHub, que move o índice sozinho, e falha sem atrasar as gravações.
+    try {
+      await this.#serialize(() => this.#catchUp());
+    } catch (error) {
+      console.error("Vault: the index couldn't catch up", errorName(error));
+    }
     try {
       await this.#serialize(() => this.#flush());
       await this.#serialize(() => this.#sync());
@@ -391,13 +401,6 @@ export class Vault extends DurableObject<VaultEnv> {
       // The retry replaces any sooner alarm: while GitHub fails, writes and pushes wait for it.
       await this.ctx.storage.setAlarm(retryAt);
       return;
-    }
-    // O índice vem depois do trabalho do GitHub e falha sozinho: uma falha dele nunca atrasa as
-    // gravações. Ele alcança o head quando um esquema novo o recomeçou ou uma queda o deixou atrás.
-    try {
-      await this.#serialize(() => this.#catchUp());
-    } catch (error) {
-      console.error("Vault: the index couldn't catch up", errorName(error));
     }
     const queued =
       this.#exec<{ n: number }>(`SELECT count(*) AS n FROM queue WHERE path NOT IN (${HELD})`)[0]
@@ -534,6 +537,12 @@ export class Vault extends DurableObject<VaultEnv> {
           this.#settleQueued(path, content, bases.get(path) ?? null);
         }
         this.#set("head", remote);
+        // A merge's mark, and the note text it keeps, go with its version, unless it waits to
+        // commit (Kelpie ran this in its daily lifecycle).
+        this.#exec(
+          `DELETE FROM owner_merges WHERE path NOT IN (SELECT path FROM queue) AND NOT EXISTS
+             (SELECT 1 FROM files f WHERE f.path = owner_merges.path AND f.content = owner_merges.content)`,
+        );
         return changed;
       });
       await this.#index(previous, remote, this.#indexed(changed));
