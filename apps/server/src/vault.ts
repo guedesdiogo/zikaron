@@ -656,6 +656,12 @@ export class Vault extends DurableObject<VaultEnv> {
           "INSERT OR REPLACE INTO authored (path, blob_sha) SELECT path, blob_sha FROM files WHERE path = ?",
           path,
         );
+        // O índice também precisa saber, para não tomar a versão pela do dono (ADR-0001 §2).
+        this.#memory.markAuthored(
+          this.#exec<{ blob_sha: string }>("SELECT blob_sha FROM files WHERE path = ?", path).map(
+            (row) => row.blob_sha,
+          ),
+        );
       }
       return;
     }
@@ -820,6 +826,10 @@ export class Vault extends DurableObject<VaultEnv> {
             shas[i] ?? "",
           );
         });
+        // E o índice o registra, para não tomar a versão pela do dono (ADR-0001 §2).
+        this.#memory.markAuthored(
+          shas.filter((sha): sha is string => sha !== undefined && sha !== ""),
+        );
         for (const path of deletions) {
           this.#exec("DELETE FROM files WHERE path = ?", path);
           this.#exec("DELETE FROM authored WHERE path = ?", path);

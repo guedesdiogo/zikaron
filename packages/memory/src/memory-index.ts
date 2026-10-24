@@ -693,13 +693,14 @@ export class MemoryIndex {
     return row === undefined ? null : { ownerGrade: row.owner === 1, tainted: row.tainted === 1 };
   }
 
-  /** Records blobs the server wrote, so their versions are told from the owner's (ADR-0001 §2). */
+  /**
+   * Records blobs the server wrote, so their versions are told from the owner's (ADR-0001 §2). It
+   * opens no transaction of its own, so the writer can call it inside the one that records them.
+   */
   markAuthored(blobShas: readonly string[]): void {
-    this.#storage.transactionSync(() => {
-      for (const blobSha of blobShas) {
-        this.#exec("INSERT OR IGNORE INTO authored_blobs (blob_sha) VALUES (?)", blobSha);
-      }
-    });
+    for (const blobSha of blobShas) {
+      this.#exec("INSERT OR IGNORE INTO authored_blobs (blob_sha) VALUES (?)", blobSha);
+    }
   }
 
   /** Every version written at a path, oldest first, the current one last. */
