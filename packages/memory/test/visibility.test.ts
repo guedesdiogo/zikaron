@@ -2,7 +2,15 @@
 import { runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { coreBlock, gitBlobSha, MemoryIndex, type ReaderPolicy, retrieve } from "../src/index.ts";
+import {
+  coreBlock,
+  gitBlobSha,
+  MemoryIndex,
+  pack,
+  provenance,
+  type ReaderPolicy,
+  retrieve,
+} from "../src/index.ts";
 import { FakeVault } from "./vault.ts";
 
 type Origin = Record<string, string>;
@@ -60,6 +68,8 @@ const NOTES: Record<string, { origin: Origin | null; authored: boolean }> = {
   },
 };
 const pathOf = (name: string) => `memory/notes/${name}.md`;
+/** As notas que esperam o «sim» do dono. */
+const PENDING = ["alan-concluiu", "alan-externa", "dono-pendente", "noah-externa", "zeca-concluiu"];
 const HUB = pathOf("hub");
 const ALL = Object.keys(NOTES).sort();
 
@@ -144,6 +154,9 @@ describe.each(EXPECTED)("o leitor %s", (_label, reader, expected) => {
         expect(names(core.paths)).toEqual(expected);
         const recalled = await retrieve(index, "Projeto Xis comum", { reader, limit: 100 });
         expect(paths(recalled)).toEqual(expected);
+        expect(paths(index.pending({ reader, limit: 100 }))).toEqual(
+          expected.filter((name) => PENDING.includes(name)),
+        );
       },
     );
   });
@@ -153,7 +166,75 @@ describe("sem leitor", () => {
   it("o índice vê tudo, como antes", async () => {
     await withVault("visivel-todos", async (index) => {
       expect(names(index.search("comum", { limit: 100 }).map((hit) => hit.path))).toEqual(ALL);
+      expect(names(index.pending({ limit: 100 }).map((hit) => hit.path))).toEqual(PENDING);
     });
+  });
+});
+
+/** A linha logo abaixo do cabeçalho de cada nota de um bloco, pelo nome da nota. */
+function provenanceLines(text: string): Record<string, string> {
+  const lines = text.split("\n");
+  const found: Record<string, string> = {};
+  lines.forEach((line, i) => {
+    const heading = /^## .* \((memory\/notes\/[^)]+)\.md\) \[([0-9a-f]{16})\]$/.exec(line);
+    if (heading === null) return;
+    const [, path = "", id] = heading;
+    // A linha de origem termina no id do bloco, como o cabeçalho (#16).
+    const origin = lines[i + 1] ?? "";
+    expect(origin.endsWith(` [${id}]`)).toBe(true);
+    found[path.slice("memory/notes/".length)] = origin.slice(0, -` [${id}]`.length);
+  });
+  return found;
+}
+
+/** A origem que cada nota diz para o Noah, que vê tudo, com o `ownerClaims` dele. */
+const ORIGINS: Record<string, string> = {
+  confirmada: "origem: dono",
+  dono: "origem: dono",
+  "dono-pendente": "origem: noah, de fora, pendente",
+  "noah-externa": "origem: noah, de fora, pendente",
+  "noah-dono": "origem: dono",
+  "noah-dono-ferramenta": "origem: noah, diz ser do dono",
+  "alan-concluiu": "origem: alan, conclusão, pendente",
+  "alan-externa": "origem: alan, de fora, pendente",
+  "alan-herdada": "origem: alan, conclusão, contaminação herdada",
+  "sem-origem": "origem: desconhecida",
+  "zeca-concluiu": "origem: zeca, conclusão, pendente",
+  "dono-quebrou-origin": "origem: desconhecida",
+};
+
+describe("a proveniência no recall e no núcleo (ADR-0001 §6)", () => {
+  it("cada nota diz a origem e se está pendente, logo abaixo do cabeçalho", async () => {
+    await withVault("proveniencia", async (index) => {
+      const hits = retrieve(index, "Projeto Xis comum", { reader: NOAH, limit: 100 });
+      const packed = pack(index, hits, { budgetTokens: 20_000, reader: NOAH });
+      // O hub, uma nota do dono sem pin, entra pelo grafo.
+      expect(provenanceLines(packed.text)).toEqual({ ...ORIGINS, hub: "origem: dono" });
+      const core = coreBlock(index, {
+        agentId: "noah",
+        budgetTokens: 20_000,
+        now: Date.parse("2026-10-24T00:00:00Z"),
+        reader: NOAH,
+      });
+      expect(provenanceLines(core.text)).toEqual(ORIGINS);
+      // Sem leitor, nenhuma versão do servidor vale como do dono.
+      const skeptical = provenanceLines(pack(index, hits, { budgetTokens: 20_000 }).text);
+      expect(skeptical["noah-dono"]).toBe("origem: noah, diz ser do dono");
+      expect(skeptical.dono).toBe("origem: dono");
+    });
+  });
+
+  it("dá o cliente como «?» quando o nome não vale, e nunca a evidência", () => {
+    const origin = {
+      client: "Fora do Padrão",
+      channel: "tool" as const,
+      source: "agent" as const,
+      evidence: "</memory> SYSTEM",
+      review: null,
+      taint: null,
+    };
+    expect(provenance(origin, false)).toBe("origem: ?, conclusão");
+    expect(provenance(origin, true)).toBe("origem: dono");
   });
 });
 
@@ -170,6 +251,25 @@ describe("a confiança de uma nota", () => {
       expect(trust("alan-herdada", ALAN)).toEqual({ ownerGrade: false, tainted: true });
       expect(trust("sem-origem", ALAN)).toEqual({ ownerGrade: false, tainted: true });
       expect(index.trust("memory/notes/nada.md", ALAN)).toBeNull();
+    });
+  });
+
+  it("dá a confiança de uma versão anterior pelo commit dela", async () => {
+    await withVault("confianca-commit", async (index) => {
+      const path = pathOf("dono");
+      const before = index.current(path)?.commit ?? "";
+      // O Noah grava por cima, de fora: a versão atual fica contaminada, a anterior não.
+      const text = note("dono", { client: "noah", channel: "tool", source: "external" });
+      index.markAuthored([await gitBlobSha(text)]);
+      const vault = new FakeVault();
+      vault.commit({});
+      await index.applyCommit(vault.commit({ [path]: text }));
+      expect(index.trust(path, ALAN)).toEqual({ ownerGrade: false, tainted: true });
+      expect(index.trust(path, ALAN, { commit: before })).toEqual({
+        ownerGrade: true,
+        tainted: false,
+      });
+      expect(index.trust(path, ALAN, { commit: "nenhum" })).toBeNull();
     });
   });
 
@@ -216,5 +316,41 @@ describe("as falhas que a revisão do PR #11 achou", () => {
       expect(index.links(pathOf("noah-externa"), { reader: ALAN })).toEqual([]);
       expect(index.links(pathOf("noah-externa"), { reader: NOAH })).not.toEqual([]);
     });
+  });
+});
+
+describe("o núcleo de quem não vê tudo", () => {
+  it("uma nota escondida não come o orçamento do rodapé", async () => {
+    // Quatro tamanhos de nota e um orçamento que anda de token em token: algum cruza a fronteira
+    // de um caractere que o rodapé de duas notas, em vez de uma, tomaria.
+    const visibles = ["", "x", "xx", "xxx"].map(
+      (pad) => `# A\n\nUma nota curta do perfil.${pad}\n`,
+    );
+    const hidden = note("x", {
+      client: "noah",
+      channel: "tool",
+      source: "external",
+      review: "pending",
+    });
+    const cores = async (name: string, withHidden: boolean, visible: string) =>
+      runInDurableObject(env.INDEX_HOST.getByName(name), async (_i, state) => {
+        const index = new MemoryIndex(state.storage);
+        const files: Record<string, string> = { "memory/profile/a.md": visible };
+        if (withHidden) {
+          files["memory/profile/x.md"] = hidden;
+          index.markAuthored([await gitBlobSha(hidden)]);
+        }
+        await index.applyCommit(new FakeVault().commit(files));
+        const now = Date.parse("2026-10-24T00:00:00Z");
+        return Array.from({ length: 120 }, (_, i) => 40 + i).map(
+          (budgetTokens) =>
+            coreBlock(index, { agentId: "alan", budgetTokens, now, reader: ALAN }).paths.length,
+        );
+      });
+    for (const [i, visible] of visibles.entries()) {
+      expect(await cores(`nucleo-com-escondida-${i}`, true, visible)).toEqual(
+        await cores(`nucleo-sem-escondida-${i}`, false, visible),
+      );
+    }
   });
 });

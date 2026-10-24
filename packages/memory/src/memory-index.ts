@@ -684,18 +684,41 @@ export class MemoryIndex {
    * How far a path's current version is trusted under the clients' settings in `policy` (ADR-0001
    * §3 and §5), whoever reads: whether it counts as the owner's, and whether it is tainted. Null
    * when no note is at the path. The writer's rules read it before a new version (ADR-0001 §4).
+   * Com `commit`, a confiança daquela versão, atual ou não, como o recall a mostra.
    */
-  trust(path: string, policy: ReaderPolicy): { ownerGrade: boolean; tainted: boolean } | null {
+  trust(
+    path: string,
+    policy: ReaderPolicy,
+    options: { commit?: string } = {},
+  ): { ownerGrade: boolean; tainted: boolean } | null {
     const [owner, ownerBindings] = ownerGradeSql(policy);
     const [tainted, taintedBindings] = taintedSql(policy);
+    const which = options.commit === undefined ? "v.is_current = 1" : "v.commit_sha = ?";
     const row = this.#exec<{ owner: number; tainted: number }>(
       `SELECT coalesce(${owner}, 0) AS owner, coalesce(${tainted}, 0) AS tainted
-       FROM versions v WHERE v.path = ? AND v.is_current = 1`,
+       FROM versions v WHERE v.path = ? AND ${which}`,
       ...ownerBindings,
       ...taintedBindings,
       path,
+      ...(options.commit === undefined ? [] : [options.commit]),
     )[0];
     return row === undefined ? null : { ownerGrade: row.owner === 1, tainted: row.tainted === 1 };
+  }
+
+  /**
+   * As notas que esperam o «sim» do dono (`review: pending` na versão atual) que o leitor pode ver,
+   * as mais recentes primeiro. Arquivadas e fundidas em outra ficam de fora, como numa busca.
+   */
+  pending(options: { reader?: ReaderPolicy; limit?: number } = {}): SearchHit[] {
+    const [filter, bindings] = versionFilter(
+      options.reader === undefined ? {} : { reader: options.reader },
+    );
+    return this.#exec<HitRow>(
+      `SELECT ${HIT_COLUMNS} FROM versions v WHERE v.origin_review IS 'pending' AND ${filter}
+       ORDER BY v.recorded_at DESC, v.path LIMIT ?`,
+      ...bindings,
+      limitOf(options),
+    ).map(toHit);
   }
 
   /**
