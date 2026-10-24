@@ -143,16 +143,47 @@ describe("os tipos novos", () => {
   });
 
   it("o leitor ignora um status ou um link inválido, com aviso", () => {
-    const note = readNote(
+    const task = readNote(
       "memory/tasks/x.md",
-      "---\nstatus: maybe\nlink: ftp://x\narchived: sim\n---\n\n# X\n\ny\n",
+      "---\nstatus: maybe\narchived: sim\n---\n\n# X\n\ny\n",
     );
-    expect(note).toMatchObject({ status: null, link: null, archived: false });
-    expect(note?.warnings).toEqual([
+    expect(task).toMatchObject({ status: null, archived: false });
+    expect(task?.warnings).toEqual([
       "`archived` is invalid; ignored",
       "`status` is invalid; ignored",
-      "`link` is invalid; ignored",
     ]);
+    const document = readNote("memory/documents/x.md", "---\nlink: ftp://x\n---\n\n# X\n\ny\n");
+    expect(document?.link).toBeNull();
+    expect(document?.warnings).toEqual(["`link` is invalid; ignored"]);
+    expect(readNote("memory/documents/y.md", "# Y\n\nz")?.warnings).toEqual([
+      "a document has no `link`",
+    ]);
+  });
+
+  it("um link com controle ou marca bidirecional não vale", async () => {
+    const spoofed = "https://example.com/\u202Egpj.exe";
+    expect(
+      readNote("memory/documents/x.md", `---\nlink: ${JSON.stringify(spoofed)}\n---\n\n# X\n\ny\n`)
+        ?.link,
+    ).toBeNull();
+    await expect(
+      writeMemory({ ...CAFE, kind: "document", body: "x", link: spoofed }, { at: AT }),
+    ).rejects.toThrow("`link` must be one http(s) URL");
+  });
+
+  it("em outros tipos, status e link são chaves do dono: nem lidas, nem apagadas", async () => {
+    const owners = "---\nstatus: rascunho\nlink: algum lugar\n---\n\n# Ideia\n\nx\n";
+    const note = readNote("memory/notes/ideia.md", owners);
+    expect(note).toMatchObject({ status: null, link: null, warnings: [] });
+    const { text } = await writeMemory(
+      { ...CAFE, kind: "note", title: "Ideia", body: "y" },
+      { at: AT, existing: owners },
+    );
+    expect(text).toContain("status: rascunho");
+    expect(text).toContain("link: algum lugar");
+    await expect(writeMemory({ ...CAFE, link: "https://example.com" }, { at: AT })).rejects.toThrow(
+      "`link` is only for a document",
+    );
   });
 });
 
@@ -214,6 +245,42 @@ describe("o arquivo", () => {
       expect(index.embeddingTexts("m").map((item) => item.text)).not.toContainEqual(
         expect.stringContaining("café com leite"),
       );
+    });
+  });
+
+  it("uma nota arquivada hoje não volta numa busca do passado", async () => {
+    await withIndex("arquivo-passado", async (index) => {
+      const vault = new FakeVault();
+      const before = await writeMemory(CAFE, { at: AT });
+      const path = memoryPath("global", "preference", CAFE.title);
+      const c1 = vault.commit({ [path]: before.text });
+      await index.applyCommit(c1);
+      const after = await writeMemory(
+        { ...CAFE, archived: true },
+        { at: AT, existing: before.text },
+      );
+      await index.applyCommit(vault.commit({ [path]: after.text }));
+      const asOf = { asOf: c1.committedAt };
+      expect(index.search("café açúcar", asOf)).toEqual([]);
+      expect(index.titled(CAFE.title, asOf)).toEqual([]);
+      expect(index.search("café açúcar", { ...asOf, includeArchived: true })).toHaveLength(1);
+    });
+  });
+
+  it("com includeArchived, a nota arquivada tem vizinhos", async () => {
+    await withIndex("arquivo-vizinhos", async (index) => {
+      const vault = new FakeVault();
+      const archived = await writeMemory(
+        { ...ARCHIVED, body: "Antes preferia café com leite. Ver [[cafes]]." },
+        { at: AT },
+      );
+      await index.applyCommit(
+        vault.commit({ [ARCHIVED_PATH]: archived.text, [LINKING_PATH]: "# Cafés\n\nx" }),
+      );
+      expect(index.neighbours(ARCHIVED_PATH)).toEqual([]);
+      expect(
+        index.neighbours(ARCHIVED_PATH, { includeArchived: true }).map((hit) => hit.path),
+      ).toEqual([LINKING_PATH]);
     });
   });
 

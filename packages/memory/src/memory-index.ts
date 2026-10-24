@@ -322,7 +322,15 @@ function versionFilter(options: SearchOptions, includeMerged = false): [string, 
     filters.push("(v.invalid_at IS NULL OR v.invalid_at > ?)");
     bindings.push(options.notExpiredAt);
   }
-  if (!options.includeArchived) filters.push("v.archived = 0");
+  if (!options.includeArchived) {
+    filters.push("v.archived = 0");
+    // A note archived now stays out of a lookup of the past too, as a merge mark is read now (#6).
+    if (options.asOf !== undefined) {
+      filters.push(
+        "NOT EXISTS (SELECT 1 FROM versions c WHERE c.path = v.path AND c.is_current = 1 AND c.archived = 1)",
+      );
+    }
+  }
   if (!includeMerged) filters.push(NOT_MERGED);
   return [filters.join(" AND "), bindings];
 }
@@ -932,9 +940,13 @@ export class MemoryIndex {
       validAt?: number;
       notExpiredAt?: number;
       scopes?: readonly Scope[];
+      includeArchived?: boolean;
     } = {},
   ): SearchHit[] {
-    const scoped = options.scopes === undefined ? {} : { scopes: options.scopes };
+    const scoped = {
+      ...(options.scopes === undefined ? {} : { scopes: options.scopes }),
+      ...(options.includeArchived ? { includeArchived: true } : {}),
+    };
     const [inScopes, scopeBindings] = versionFilter(scoped);
     const exists = this.#exec(
       `SELECT 1 AS one FROM versions v WHERE v.path = ? AND ${inScopes}`,

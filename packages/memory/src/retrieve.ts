@@ -344,6 +344,7 @@ export function retrieve(
         ...(options.validAt === undefined ? {} : { validAt: options.validAt }),
         ...(expiredAt === undefined ? {} : { notExpiredAt: expiredAt }),
         ...(options.scopes === undefined ? {} : { scopes: options.scopes }),
+        ...(options.includeArchived ? { includeArchived: true } : {}),
       })) {
         if (seen.has(hit.path)) continue;
         seen.add(hit.path);

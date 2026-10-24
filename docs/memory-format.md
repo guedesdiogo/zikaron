@@ -635,8 +635,8 @@ origin:
 | `document`: um documento guardado por nome, link e assunto | `documents/` | semantic | `link`, obrigatório |
 | `delegation`: o que está com o Alan | `delegations/` | episodic | `status: open\|done` |
 
-- **`status`** só vale em `task` e `delegation`; o escritor recusa nos outros tipos.
-- **`link`** é uma URL http(s), sem espaços, de até 2.000 caracteres. Um `document` sem ela é recusado.
+- **`status`** só vale em `task` e `delegation`, e **`link`** só em `document`. O escritor os recusa nos outros tipos. Neles, uma chave `status` ou `link` é do dono: o leitor não a lê e o escritor não a apaga.
+- **`link`** é uma URL http(s), sem espaços, controles nem marcas bidirecionais, de até 2.000 caracteres. Um `document` sem ela é recusado pelo escritor; o leitor o indexa com um aviso.
 - **O corpo de um `document` é o assunto,** até 2.000 caracteres, nunca o conteúdo: a verdade é o Drive ou o Gmail.
 - **`commitment`** continua, para o contexto de um evento cuja verdade é a Agenda.
 
@@ -644,8 +644,11 @@ origin:
 
 `archived: true` arquiva a nota: «arquivados devem ser acessados apenas quando solicitado diretamente» (o Diogo, Q5).
 - **Sai de:** a busca por texto, por título, por entidade e por vetor; os vizinhos do grafo (a nota arquivada também não tem vizinhos); o núcleo, mesmo pinned; os jobs do ciclo de vida.
-- **Continua em:** o mesmo caminho e a mesma cadeia de versões; a leitura pelo caminho; a resolução de links, para um link não passar a apontar para um homônimo; uma busca que peça `includeArchived`.
+- **Também no passado:** uma busca com `asOf` deixa de fora a nota arquivada hoje, como uma marca de merge é lida como está hoje.
+- **Continua em:** o mesmo caminho e a mesma cadeia de versões; a leitura pelo caminho; a resolução de links, para um link não passar a apontar para um homônimo; uma busca, ou os vizinhos de uma nota, que peçam `includeArchived`.
+- **Dito de novo:** um fato igual a uma nota arquivada não é «já na memória»; vira uma nota nova, viva, num caminho numerado.
 - **Por que uma flag e não uma pasta:** mover o arquivo mudaria o caminho, e o caminho é a identidade da nota.
+- **Uma nova versão leva o que a anterior tinha:** como `pinned` e `evergreen`, quem grava por cima de uma nota lê a versão atual e repassa `status`, `link`, `archived` e `origin`. O escritor trata a entrada como a versão inteira e apaga o que ela deixa de fora. Quem grava calcula também o `taint: inherited` (ADR-0001 §5).
 - **O schema do índice passou para 4:** um índice de antes recomeça vazio e se refaz do cofre.
 
 ## Credits

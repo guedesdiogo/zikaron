@@ -10,6 +10,7 @@ import {
   type Level,
   MAX_FRONTMATTER_LENGTH,
   MAX_SOURCES,
+  STATUS_KINDS,
   STATUSES,
   type Status,
 } from "./note.ts";
@@ -133,12 +134,14 @@ function check(input: MemoryInput, at: string): string[] {
   }
   if (input.status !== undefined) {
     if (!STATUSES.includes(input.status)) problems.push("`status` must be open or done");
-    else if (input.kind !== "task" && input.kind !== "delegation") {
+    else if (!STATUS_KINDS.includes(input.kind)) {
       problems.push("`status` is only for a task or a delegation");
     }
   }
   if (input.link !== undefined && !isLink(input.link)) {
     problems.push("`link` must be one http(s) URL");
+  } else if (input.link !== undefined && input.kind !== "document") {
+    problems.push("`link` is only for a document");
   }
   if (input.kind === "document") {
     if (input.link === undefined) problems.push("a document needs its `link`");
@@ -229,8 +232,9 @@ export async function writeMemory(
         ? { contradicts: input.contradicts.map((target) => `[[${target.trim()}]]`) }
         : undefined,
     ],
-    ["status", input.status],
-    ["link", input.link],
+    // On other kinds these keys are the owner's own, left as they are.
+    ...(STATUS_KINDS.includes(input.kind) ? [["status", input.status] as [string, unknown]] : []),
+    ...(input.kind === "document" ? [["link", input.link] as [string, unknown]] : []),
     ["archived", input.archived || undefined],
     ["origin", input.origin === undefined ? undefined : originFields(input.origin)],
     ["updated", options.at],

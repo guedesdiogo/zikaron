@@ -27,7 +27,7 @@ export const CLIENT_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
 export const MAX_EVIDENCE_LENGTH = 300;
 const ORIGIN_KEYS = ["client", "channel", "source", "evidence", "review", "taint"];
 /** Controles, separadores de linha e marcas bidirecionais, como o `printableLine` do escritor. */
-const UNPRINTABLE = /[\p{Cc}\u2028\u2029\u202A-\u202E\u2066-\u2069]/u;
+export const UNPRINTABLE = /[\p{Cc}\u2028\u2029\u202A-\u202E\u2066-\u2069]/u;
 
 const absent = (value: unknown) => value === undefined || value === null;
 
