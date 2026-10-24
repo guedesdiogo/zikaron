@@ -66,7 +66,27 @@ export {
   repointedStub,
   type VaultText,
 } from "./merge.ts";
-export { isMemoryId, LEVELS, type Level, MAX_SOURCES, type Note, readNote } from "./note.ts";
+export {
+  isLink,
+  isMemoryId,
+  LEVELS,
+  type Level,
+  MAX_SOURCES,
+  type Note,
+  readNote,
+  STATUSES,
+  type Status,
+} from "./note.ts";
+export {
+  CHANNELS,
+  type Channel,
+  CLIENT_NAME,
+  type Origin,
+  originFields,
+  parseOrigin,
+  SOURCES,
+  type Source,
+} from "./origin.ts";
 export {
   type HitView,
   type Page,
@@ -119,6 +139,7 @@ export {
 } from "./summary.ts";
 export { instantOf, isDate, isDateTime } from "./time.ts";
 export {
+  MAX_DOCUMENT_BODY,
   MemoryFormatError,
   type MemoryInput,
   printableLine,

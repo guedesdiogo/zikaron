@@ -12,6 +12,10 @@ export const KINDS = [
   "procedure",
   "note",
   "session",
+  // Zikaron (#6): a to-do without a time, a document kept by name and link, and what is with Alan.
+  "task",
+  "document",
+  "delegation",
 ] as const;
 export type Kind = (typeof KINDS)[number];
 
@@ -26,6 +30,9 @@ export const KIND_FOLDERS: Record<Kind, string> = {
   procedure: "procedures",
   note: "notes",
   session: "sessions",
+  task: "tasks",
+  document: "documents",
+  delegation: "delegations",
 };
 
 const KIND_BY_FOLDER = new Map<string, Kind>(
@@ -37,7 +44,9 @@ export const TIERS = ["episodic", "semantic", "procedural"] as const;
 export type Tier = (typeof TIERS)[number];
 
 export function defaultTier(kind: Kind): Tier {
-  if (kind === "session" || kind === "event") return "episodic";
+  if (kind === "session" || kind === "event" || kind === "task" || kind === "delegation") {
+    return "episodic";
+  }
   if (kind === "procedure") return "procedural";
   return "semantic";
 }

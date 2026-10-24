@@ -17,6 +17,7 @@ import {
   splitFrontmatter,
   valueLinks,
 } from "./markdown.ts";
+import { type Origin, parseOrigin } from "./origin.ts";
 import { instantOf, isDateTime } from "./time.ts";
 
 /** How a memory was reached: said by the owner, deduced from what was said, or guessed. */
@@ -35,6 +36,15 @@ export const MAX_LINKS = 500;
 const RESERVED_KEYS = ["__proto__", "constructor", "prototype"];
 
 const MEMORY_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+
+/** Where a task or a delegation stands (#6). */
+export const STATUSES = ["open", "done"] as const;
+export type Status = (typeof STATUSES)[number];
+
+/** A document's link: one http(s) URL, without spaces (#6). */
+export const MAX_LINK_LENGTH = 2_000;
+export const isLink = (value: unknown): value is string =>
+  typeof value === "string" && value.length <= MAX_LINK_LENGTH && /^https?:\/\/[^\s]+$/.test(value);
 
 export function isMemoryId(value: unknown): value is string {
   return typeof value === "string" && MEMORY_ID.test(value);
@@ -64,6 +74,13 @@ export interface Note {
   pinned: boolean;
   abstract: string | null;
   updated: string | null;
+  /** Out of recall, search and the core; read only when asked for directly (#6). */
+  archived: boolean;
+  status: Status | null;
+  /** A document's link (#6). */
+  link: string | null;
+  /** Who wrote this version, through which channel, and from where (ADR-0001 §3). */
+  origin: Origin | null;
   /** Every key, unknown ones included, as parsed. */
   frontmatter: Record<string, unknown>;
   body: string;
@@ -262,6 +279,10 @@ export function readNote(path: string, text: string): Note | null {
     updated: field(frontmatter, "updated", warnings, (value) =>
       typeof value === "string" && isDateTime(value) ? value : null,
     ),
+    archived: flag("archived"),
+    status: field(frontmatter, "status", warnings, oneOf(STATUSES)),
+    link: field(frontmatter, "link", warnings, (value) => (isLink(value) ? value : null)),
+    origin: field(frontmatter, "origin", warnings, parseOrigin),
     frontmatter,
     body,
     links,
