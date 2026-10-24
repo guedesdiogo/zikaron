@@ -146,3 +146,37 @@ describe("sem leitor", () => {
     });
   });
 });
+
+describe("a confiança de uma nota", () => {
+  it("diz se ela vale como do dono e se está contaminada, pela configuração atual", async () => {
+    await withVault("confianca", async (index) => {
+      const trust = (name: string, reader: ReaderPolicy) => index.trust(pathOf(name), reader);
+      expect(trust("dono", ALAN)).toEqual({ ownerGrade: true, tainted: false });
+      expect(trust("confirmada", ALAN)).toEqual({ ownerGrade: true, tainted: false });
+      expect(trust("noah-dono", ALAN)).toEqual({ ownerGrade: true, tainted: false });
+      expect(trust("noah-dono", ALAN_SEM_CLAIMS)).toEqual({ ownerGrade: false, tainted: true });
+      expect(trust("noah-externa", ALAN)).toEqual({ ownerGrade: false, tainted: true });
+      expect(trust("alan-concluiu", ALAN)).toEqual({ ownerGrade: false, tainted: false });
+      expect(trust("alan-herdada", ALAN)).toEqual({ ownerGrade: false, tainted: true });
+      expect(trust("sem-origem", ALAN)).toEqual({ ownerGrade: false, tainted: true });
+      expect(index.trust("memory/notes/nada.md", ALAN)).toBeNull();
+    });
+  });
+
+  it("o registro do que o servidor escreveu sobrevive a um rebuild", async () => {
+    await withVault("confianca-rebuild", async (index) => {
+      await index.rebuild([]);
+      expect(index.trust(pathOf("noah-externa"), ALAN)).toBeNull();
+      const vault = new FakeVault();
+      await index.applyCommit(
+        vault.commit({
+          [pathOf("noah-externa")]: note("noah-externa", NOTES["noah-externa"]?.origin ?? null),
+        }),
+      );
+      expect(index.trust(pathOf("noah-externa"), ALAN)).toEqual({
+        ownerGrade: false,
+        tainted: true,
+      });
+    });
+  });
+});

@@ -8,7 +8,7 @@ import type { LinkBy, LinkKind } from "./markdown.ts";
 import { type Level, readNote, type Status } from "./note.ts";
 import type { Channel, Origin, Source } from "./origin.ts";
 import { instantOf } from "./time.ts";
-import { type ReaderPolicy, visibleSql } from "./visibility.ts";
+import { ownerGradeSql, type ReaderPolicy, taintedSql, visibleSql } from "./visibility.ts";
 
 export type SqlValue = ArrayBuffer | string | number | null;
 
@@ -673,6 +673,24 @@ export class MemoryIndex {
       ...bindings,
     )[0];
     return row === undefined ? null : toVersion(row);
+  }
+
+  /**
+   * How far a path's current version is trusted under the clients' settings in `policy` (ADR-0001
+   * §3 and §5), whoever reads: whether it counts as the owner's, and whether it is tainted. Null
+   * when no note is at the path. The writer's rules read it before a new version (ADR-0001 §4).
+   */
+  trust(path: string, policy: ReaderPolicy): { ownerGrade: boolean; tainted: boolean } | null {
+    const [owner, ownerBindings] = ownerGradeSql(policy);
+    const [tainted, taintedBindings] = taintedSql(policy);
+    const row = this.#exec<{ owner: number; tainted: number }>(
+      `SELECT coalesce(${owner}, 0) AS owner, coalesce(${tainted}, 0) AS tainted
+       FROM versions v WHERE v.path = ? AND v.is_current = 1`,
+      ...ownerBindings,
+      ...taintedBindings,
+      path,
+    )[0];
+    return row === undefined ? null : { ownerGrade: row.owner === 1, tainted: row.tainted === 1 };
   }
 
   /** Records blobs the server wrote, so their versions are told from the owner's (ADR-0001 §2). */
