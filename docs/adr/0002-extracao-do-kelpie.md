@@ -13,7 +13,7 @@ O Kelpie construiu uma memória madura sobre um cofre Markdown no GitHub, no Clo
 |---|---|---|
 | `packages/memory` | ~5.200 linhas em 22 arquivos | formato, índice, busca, cercado, núcleo, ciclo de vida, escritor de notas. Só depende de `yaml`; compila sem tipos de runtime |
 | `packages/vault` | ~800 linhas | a interface do backend, o adaptador do GitHub (JWT do App, árvores, `compare`, `createCommitOnBranch`), o webhook com HMAC e um backend falso |
-| `apps/context-store` | ~7.500 linhas, 4.300 só no `vault.ts` | o Durable Object escritor único, misturado com persona, regras, skills, agent files, propostas por PR e o Dream |
+| `apps/context-store` | ~7.300 linhas, 4.300 só no `vault.ts` | o Durable Object escritor único, misturado com persona, regras, skills, agent files, propostas por PR e o Dream |
 
 O Kelpie está desligado desde 2026-10-23 (guedesdiogo/kelpie#514). O código dele é MIT, © 2026 Diogo Guedes, o mesmo dono deste repo.
 

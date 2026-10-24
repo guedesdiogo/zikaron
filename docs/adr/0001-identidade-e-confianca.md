@@ -125,6 +125,7 @@ O Noah começa com `ownerClaims`, mesmo com a credencial ao alcance do terminal 
 
 ## Consequências
 
+- **O cofre só pode ter um escritor automático: o Zikaron.** Os commits de outro servidor no mesmo cofre, como o context-store do Kelpie, contariam como do dono. Por isso o Zikaron só entra num cofre depois que o outro escritor parar (Story 1.9 do #1).
 - **O canal do dono é tão forte quanto quem pode dar push no cofre.** Uma credencial do GitHub do Diogo numa máquina onde um agente tem terminal vira «edição do Diogo». O relatório diário lista as notas que mudaram; fechar essas credenciais é trabalho do `hermes-agents`.
 - **O `ownerClaims` do Noah é um risco aceito.** Um Noah induzido por um e-mail pode gravar algo como dito pelo Diogo, com um id de mensagem forjado, e o Alan recebe. O que reduz o risco:
   - a evidência fica na nota;
