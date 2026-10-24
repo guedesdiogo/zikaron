@@ -1,0 +1,3 @@
+# Instalação isolada: cada workspace só enxerga as dependências que declara.
+[install]
+linker = "isolated"
