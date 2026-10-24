@@ -48,6 +48,16 @@ const NOTES: Record<string, { origin: Origin | null; authored: boolean }> = {
     authored: true,
   },
   "sem-origem": { origin: null, authored: true },
+  // Um cliente que saiu da configuração (ou nunca esteve nela) conta como `exposed`.
+  "zeca-concluiu": {
+    origin: { client: "zeca", channel: "tool", source: "agent", review: "pending" },
+    authored: true,
+  },
+  // O dono editou uma nota pendente de fora e deixou o `origin` quebrado: não é um «sim».
+  "dono-quebrou-origin": {
+    origin: { client: "noah", channel: "tool", source: "external", extra: "x" },
+    authored: false,
+  },
 };
 const pathOf = (name: string) => `memory/notes/${name}.md`;
 const HUB = pathOf("hub");
@@ -57,7 +67,7 @@ const policy = (
   client: string,
   mode: ReaderPolicy["mode"],
   ownerClaims: string[] = ["noah"],
-): ReaderPolicy => ({ client, mode, exposed: ["noah"], ownerClaims });
+): ReaderPolicy => ({ client, mode, trusted: ["alan", "kelpie"], ownerClaims });
 
 const NOAH = policy("noah", "exposed");
 const ALAN = policy("alan", "privileged");
@@ -177,6 +187,34 @@ describe("a confiança de uma nota", () => {
         ownerGrade: false,
         tainted: true,
       });
+    });
+  });
+});
+
+describe("as falhas que a revisão do PR #11 achou", () => {
+  it("um frontmatter quebrado com `origin` não vale como do dono; sem `origin`, vale", async () => {
+    await runInDurableObject(
+      env.INDEX_HOST.getByName("frontmatter-quebrado"),
+      async (_i, state) => {
+        const index = new MemoryIndex(state.storage);
+        const comOrigin =
+          "---\norigin:\n  client: noah\n  source: external\ntags: [a\n---\n\n# A\n\nx\n";
+        const semOrigin = "---\ntags: [a\n---\n\n# B\n\nx\n";
+        await index.applyCommit(
+          new FakeVault().commit({ [pathOf("a")]: comOrigin, [pathOf("b")]: semOrigin }),
+        );
+        expect(index.current(pathOf("a"), { reader: ALAN })).toBeNull();
+        expect(index.trust(pathOf("a"), ALAN)).toEqual({ ownerGrade: false, tainted: true });
+        expect(index.current(pathOf("b"), { reader: ALAN })).not.toBeNull();
+        expect(index.trust(pathOf("b"), ALAN)).toEqual({ ownerGrade: true, tainted: false });
+      },
+    );
+  });
+
+  it("os links de uma nota que o leitor não vê não aparecem", async () => {
+    await withVault("links-invisiveis", async (index) => {
+      expect(index.links(pathOf("noah-externa"), { reader: ALAN })).toEqual([]);
+      expect(index.links(pathOf("noah-externa"), { reader: NOAH })).not.toEqual([]);
     });
   });
 });
