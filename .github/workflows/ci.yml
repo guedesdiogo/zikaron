@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# O repo é público: todo job roda em runners do GitHub, sem segredos e sem pull_request_target, para
+# que um PR de fork nunca rode numa máquina nossa nem leia um segredo (CLAUDE.md, «Limites»).
+jobs:
+  checks:
+    name: Lint, typecheck e testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: bun run lint
+      # Até o primeiro workspace entrar (Story 1.2), não há o que checar nem testar.
+      - id: workspaces
+        run: |
+          if compgen -G "packages/*/package.json" > /dev/null || compgen -G "apps/*/package.json" > /dev/null; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nenhum workspace ainda: typecheck e testes não rodam." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.workspaces.outputs.present == 'true'
+        run: bun run typecheck
+      # Os testes, uma vez, com cobertura: cada workspace falha abaixo do piso dele.
+      - if: steps.workspaces.outputs.present == 'true'
+        run: bun run test:coverage
+
+  workflows:
+    name: Lint dos workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # O actionlint roda o shellcheck, que já vem no runner, em cada bloco run:.
+      - name: actionlint
+        env:
+          VERSION: 1.7.12
+          SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/actionlint.tgz" "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/actionlint_${VERSION}_linux_amd64.tar.gz"
+          echo "${SHA256}  $RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tgz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+
+  dependency-review:
+    name: Revisão de dependências
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+  # O único check que o ruleset da main exige: um gate novo não muda o ruleset.
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [checks, workflows, dependency-review]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # Todo gate passa; só a revisão de dependências pode pular, fora de um PR.
+      - name: Todos os gates passaram
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$NEEDS"
+          jq -e --arg event "$EVENT" '
+            to_entries | all(.value.result == "success" or
+              (.value.result == "skipped" and .key == "dependency-review" and $event != "pull_request"))
+          ' <<< "$NEEDS" > /dev/null
