@@ -25,19 +25,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: bun run lint
-      # Até o primeiro workspace entrar (Story 1.2), não há o que checar nem testar.
-      - id: workspaces
-        run: |
-          if compgen -G "packages/*/package.json" > /dev/null || compgen -G "apps/*/package.json" > /dev/null; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Nenhum workspace ainda: typecheck e testes não rodam." >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - if: steps.workspaces.outputs.present == 'true'
-        run: bun run typecheck
+      - run: bun run typecheck
       # Os testes, uma vez, com cobertura: cada workspace falha abaixo do piso dele.
-      - if: steps.workspaces.outputs.present == 'true'
-        run: bun run test:coverage
+      - run: bun run test:coverage
 
   workflows:
     name: Lint dos workflows

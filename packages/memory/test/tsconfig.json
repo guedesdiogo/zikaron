@@ -1,0 +1,8 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/vitest-plugin/types"],
+    "resolveJsonModule": true
+  },
+  "include": ["./**/*.ts", "../vitest.config.ts"]
+}

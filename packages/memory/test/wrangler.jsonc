@@ -1,0 +1,12 @@
+// A Worker that exists only for tests: its Durable Object gives the index a real SQLite store, with
+// FTS5, in workerd. The package itself imports nothing from Cloudflare.
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "zikaron-memory-test",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-01",
+  "durable_objects": {
+    "bindings": [{ "name": "INDEX_HOST", "class_name": "IndexHost" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["IndexHost"] }]
+}
