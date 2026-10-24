@@ -4,6 +4,7 @@
 - Data: 2026-10-24
 - Issue: [#1](https://github.com/guedesdiogo/zikaron/issues/1)
 - Aceito pelo Diogo na conversa de 2026-10-24 (as respostas estão citadas no #1)
+- Emendado por: [ADR-0003](0003-corrija-pela-palavra-do-dono.md), uma nota do dono muda pela palavra do dono, também pelo provedor
 
 ## Contexto
 
@@ -74,7 +75,7 @@ O que o pedido pode dizer e o servidor limita:
 - `source: owner` pelo canal do provedor entra direto, com `level: explicit` e a evidência.
 - `agent` e `external` entram com `review: pending` e `level: inferred`. O «sim» do Diogo é tirar o `review: pending` no cofre (Obsidian ou GitHub). Uma página de confirmação atrás do Access, com o login dele, fica para depois.
 - **Rotinas agendadas não gravam.** Uma gravação com `context: cron` é recusada sem commit. Quem marca o contexto é o provedor; o servidor recusa.
-- **Nenhum agente reescreve** uma nota que vale como do Diogo, uma nota do núcleo (pinned, ou em `profile/`) ou uma nota arquivada. São as regras guedesdiogo/kelpie#149 e guedesdiogo/kelpie#168, agora pelo servidor.
+- **Nenhum agente reescreve** uma nota que vale como do Diogo, uma nota do núcleo (pinned, ou em `profile/`) ou uma nota arquivada. A exceção, só para a nota do Diogo, é a palavra do próprio Diogo pelo provedor ([ADR-0003](0003-corrija-pela-palavra-do-dono.md)). São as regras guedesdiogo/kelpie#149 e guedesdiogo/kelpie#168, agora pelo servidor.
 - **«Esqueça» vindo de um agente** só alcança as notas do próprio cliente e as pendentes. Uma nota do Diogo sai pelo cofre. O git guarda tudo.
 - **Nenhum agente pina uma nota.** O `pinned` só vem do cofre.
 
@@ -148,5 +149,5 @@ O Noah começa com `ownerClaims`, mesmo com a credencial ao alcance do terminal 
 
 - [#1](https://github.com/guedesdiogo/zikaron/issues/1): o plano e as decisões do Diogo.
 - ADRs 0005, 0016, 0020 e 0021 do [Kelpie](https://github.com/guedesdiogo/kelpie/tree/f033cf3/docs/adr) e o `docs/memory-format.md` dele.
-- [Cloudflare Access: validar o JWT](https://developers.cloudflare.com/cloudflare-one/identity/authorization-cookie/validating-json/) e [service tokens](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/).
+- Cloudflare Access: [validar o JWT](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/) e os [campos do token de aplicação](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/application-token/) (`common_name` é o Client ID do service token).
 - MemGhost, arXiv 2607.05189.
