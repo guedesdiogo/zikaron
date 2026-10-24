@@ -2,7 +2,7 @@ import { runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { FakeVaultBackend } from "@zikaron/vault/fake";
 import { describe, expect, it } from "vitest";
-import worker, { replaceBackendForTesting } from "../src/index.ts";
+import worker, { MAX_WEBHOOK_BYTES, replaceBackendForTesting } from "../src/index.ts";
 import { VAULT_NAME, type VaultEnv } from "../src/vault.ts";
 
 /** Um pedido como o Worker o recebe, com as propriedades `cf` do Cloudflare. */
@@ -106,5 +106,21 @@ describe("the Worker's webhook route", () => {
       expect(response.status, `${request.method} ${request.url}`).toBe(401);
       expect(await response.json()).toEqual({ error: "unauthorized" });
     }
+  });
+});
+
+describe("o limite do corpo do webhook", () => {
+  it("recusa um corpo grande demais antes de conferir a assinatura", async () => {
+    const big = "x".repeat(MAX_WEBHOOK_BYTES + 1);
+    const declared = new IncomingRequest(`${URL_BASE}/webhooks/github`, {
+      method: "POST",
+      headers: { "X-GitHub-Event": "push", "Content-Length": String(big.length) },
+      body: big,
+    });
+    expect((await worker.fetch(declared, env as VaultEnv)).status).toBe(413);
+    // Sem Content-Length, a leitura para no limite.
+    const streamed = delivery("push", await signed(big), big);
+    streamed.headers.delete("Content-Length");
+    expect((await worker.fetch(streamed, env as VaultEnv)).status).toBe(413);
   });
 });
