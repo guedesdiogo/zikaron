@@ -1,6 +1,6 @@
 import { parsePushEvent, verifyWebhookSignature } from "@zikaron/vault";
 import { handleApi } from "./api.ts";
-import { json } from "./http.ts";
+import { json, readUpTo } from "./http.ts";
 import { type Client, type Clients, clientOf, type KeyFetcher, parseClients } from "./identity.ts";
 import { handleMcp } from "./mcp.ts";
 import { VAULT_NAME, type VaultEnv } from "./vault.ts";
@@ -28,8 +28,19 @@ function errorName(error: unknown): string {
  * responde 401 e não sincroniza nada. Um `ping` responde 200; um `push` só pede a sincronização,
  * sem ler nem gravar nada do corpo além do ref; os outros eventos são ignorados com 202.
  */
+/**
+ * O maior corpo que o webhook lê antes de conferir a assinatura: o GitHub limita as entregas a
+ * 25 MB, e um push do cofre fica muito abaixo disso.
+ */
+export const MAX_WEBHOOK_BYTES = 5_000_000;
+
 async function receiveWebhook(request: Request, env: VaultEnv): Promise<Response> {
-  const body = await request.text();
+  // O tamanho é conferido antes da assinatura: quem não tem o segredo não faz o Worker ler
+  // megabytes. O `Content-Length` declarado barra antes de ler; sem ele, a leitura para no limite.
+  const declared = Number(request.headers.get("Content-Length") ?? "0");
+  if (declared > MAX_WEBHOOK_BYTES) return new Response(null, { status: 413 });
+  const body = await readUpTo(request, MAX_WEBHOOK_BYTES);
+  if (body === null) return new Response(null, { status: 413 });
   const verified = await verifyWebhookSignature(
     env.GITHUB_WEBHOOK_SECRET ?? "",
     body,

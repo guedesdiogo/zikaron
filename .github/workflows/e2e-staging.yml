@@ -1,0 +1,35 @@
+name: E2E staging
+
+# O roteiro ponta a ponta do staging (Story 1.8), à mão, contra o cofre de teste. As credenciais
+# são de clientes de teste e ficam no environment `staging`, que só aceita a main.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Roteiro ponta a ponta
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: scripts/e2e-staging.mjs
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+          VAULT_REPOSITORY: ${{ vars.VAULT_REPOSITORY }}
+          E2E_NOAH_CLIENT_ID: ${{ vars.E2E_NOAH_CLIENT_ID }}
+          E2E_ALAN_CLIENT_ID: ${{ vars.E2E_ALAN_CLIENT_ID }}
+          E2E_OUTRO_CLIENT_ID: ${{ vars.E2E_OUTRO_CLIENT_ID }}
+          E2E_NOAH_CLIENT_SECRET: ${{ secrets.E2E_NOAH_CLIENT_SECRET }}
+          E2E_ALAN_CLIENT_SECRET: ${{ secrets.E2E_ALAN_CLIENT_SECRET }}
+          E2E_OUTRO_CLIENT_SECRET: ${{ secrets.E2E_OUTRO_CLIENT_SECRET }}
+          E2E_VAULT_TOKEN: ${{ secrets.E2E_VAULT_TOKEN }}
+        run: node scripts/e2e-staging.mjs

@@ -26,5 +26,27 @@
   "durable_objects": {
     "bindings": [{ "name": "VAULT", "class_name": "Vault" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Vault"] }]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Vault"] }],
+  "env": {
+    // O staging (Story 1.8): a CI publica a cada merge na main, contra o cofre de teste. Fica no
+    // workers.dev, com o Cloudflare Access na frente (ligado no painel) e o webhook do GitHub num
+    // caminho de bypass. Bindings e vars não são herdados entre ambientes: vão repetidos aqui, e os
+    // valores entram como `--var` no deploy (.github/workflows/staging.yml).
+    "staging": {
+      "name": "zikaron-staging",
+      "workers_dev": true,
+      "preview_urls": false,
+      "vars": {
+        "GITHUB_APP_ID": "",
+        "GITHUB_INSTALLATION_ID": "",
+        "VAULT_REPOSITORY": "",
+        "ACCESS_TEAM_DOMAIN": "",
+        "ACCESS_AUD": "",
+        "ZIKARON_CLIENTS": ""
+      },
+      "durable_objects": {
+        "bindings": [{ "name": "VAULT", "class_name": "Vault" }]
+      }
+    }
+  }
 }
