@@ -67,7 +67,7 @@ O que o pedido pode dizer e o servidor limita:
 - `evidence` é guardada como veio, uma linha, sem segredos.
 
 **A confiança de uma versão é calculada na leitura,** a partir do `origin`, de quem escreveu o blob e da configuração atual do cliente. Assim, desligar o `ownerClaims` de um cliente vale na hora, sem reescrever o cofre. Uma versão **vale como do Diogo** quando:
-- o blob é do dono e não tem `review: pending` (uma nota que o Diogo escreveu, ou uma nota pendente que ele confirmou tirando o `review`); ou
+- o blob é do dono, não tem `review: pending` e o `origin`, se havia, pôde ser lido (uma nota que o Diogo escreveu, ou uma nota pendente que ele confirmou tirando o `review`; uma edição que quebra o bloco não confirma nada); ou
 - o blob é do servidor, com `source: owner`, `channel: provider`, e o cliente que gravou tem `ownerClaims`.
 
 ### 4. A regra de gravação (Q3)
@@ -83,8 +83,9 @@ O que o pedido pode dizer e o servidor limita:
 
 Uma versão é **contaminada** quando não vale como do Diogo e:
 - o `source` é `external`; ou
-- quem gravou é um cliente `exposed`; ou
-- tem `taint: inherited`.
+- quem gravou é um cliente `exposed`, ou um cliente que não está na configuração: a lista é de permissão, para que tirar um cliente comprometido da configuração não limpe a marca das notas dele; ou
+- tem `taint: inherited`; ou
+- tem um `origin` que não pôde ser lido (um bloco quebrado, ou um frontmatter ignorado que tinha `origin`).
 
 **A marca acompanha a nota.** Quando um cliente grava por cima de uma nota cuja versão atual está contaminada, o servidor põe `taint: inherited` na nova versão. Só o canal do dono tira a marca. Um resultado futuro que combine notas (os resumos e os merges do Dream) herda a marca de qualquer nota que leu.
 

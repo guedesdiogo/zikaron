@@ -29,6 +29,15 @@ export function parseClients(json: string | undefined): Clients {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("ZIKARON_CLIENTS must be an object");
   }
+  // O JSON.parse guarda só o último de dois Client IDs iguais: a repetição é recusada à parte.
+  for (const id of Object.keys(value)) {
+    const quoted = JSON.stringify(id);
+    let count = 0;
+    for (let at = json.indexOf(quoted); at !== -1; at = json.indexOf(quoted, at + 1)) {
+      if (/^\s*:/.test(json.slice(at + quoted.length))) count += 1;
+    }
+    if (count > 1) throw new Error("ZIKARON_CLIENTS repeats a client id");
+  }
   const clients = new Map<string, Client>();
   const names = new Set<string>();
   for (const [id, entry] of Object.entries(value)) {
@@ -62,7 +71,7 @@ export function readerPolicy(client: Client, clients: Clients): ReaderPolicy {
   return {
     client: client.name,
     mode: client.exposed ? "exposed" : client.privileged ? "privileged" : "plain",
-    exposed: all.filter((each) => each.exposed).map((each) => each.name),
+    trusted: all.filter((each) => !each.exposed).map((each) => each.name),
     ownerClaims: all.filter((each) => each.ownerClaims).map((each) => each.name),
   };
 }
@@ -90,8 +99,12 @@ const fetchKeys: KeyFetcher = async (url) => {
   return (await response.json()) as { keys: Jwk[] };
 };
 
-/** As chaves ficam em cache por isolate; um `kid` desconhecido força uma busca nova. */
+/**
+ * As chaves ficam em cache por isolate. Um `kid` desconhecido força uma busca nova, no máximo uma
+ * por minuto, para um token forjado não virar uma enxurrada de buscas.
+ */
 const KEYS_TTL_MS = 60 * 60_000;
+const REFETCH_MS = 60_000;
 /** Uma folga para relógios que não batem. */
 const CLOCK_SKEW_S = 60;
 const keyCache = new Map<string, { at: number; keys: Map<string, CryptoKey> }>();
@@ -103,21 +116,29 @@ async function keysOf(
   fresh: boolean,
 ): Promise<Map<string, CryptoKey>> {
   const cached = keyCache.get(teamDomain);
-  if (!fresh && cached !== undefined && now - cached.at < KEYS_TTL_MS) return cached.keys;
+  if (cached !== undefined) {
+    const age = now - cached.at;
+    if ((!fresh && age < KEYS_TTL_MS) || (fresh && age < REFETCH_MS)) return cached.keys;
+  }
   const { keys } = await fetcher(`${teamDomain}/cdn-cgi/access/certs`);
   const imported = new Map<string, CryptoKey>();
   for (const jwk of keys) {
     if (jwk.kty !== "RSA" || jwk.kid === undefined) continue;
-    imported.set(
-      jwk.kid,
-      await crypto.subtle.importKey(
-        "jwk",
-        jwk as JsonWebKey,
-        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-        false,
-        ["verify"],
-      ),
-    );
+    if (jwk.alg !== undefined && jwk.alg !== "RS256") continue;
+    try {
+      imported.set(
+        jwk.kid,
+        await crypto.subtle.importKey(
+          "jwk",
+          jwk as JsonWebKey,
+          { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+          false,
+          ["verify"],
+        ),
+      );
+    } catch {
+      // Uma chave que não se importa não derruba as outras.
+    }
   }
   keyCache.set(teamDomain, { at: now, keys: imported });
   return imported;

@@ -139,10 +139,49 @@ describe("verifyAccessJwt", () => {
     expect(fetches).toBe(1);
     expect(
       await verifyAccessJwt(await token({}, { pair: other, kid: "k3" }), APP, {
-        now: NOW + 2_000,
+        now: NOW + 61_000,
         fetcher,
       }),
     ).toBeNull();
+    expect(fetches).toBe(2);
+  });
+});
+
+describe("as chaves do Access", () => {
+  it("uma chave que não se importa, ou de outro algoritmo, não derruba as outras", async () => {
+    const good = await publicJwk(signing, "k1");
+    const fetcher: KeyFetcher = async () => ({
+      keys: [
+        { kid: "ruim", kty: "RSA", n: "x", e: "y" },
+        { ...(await publicJwk(other, "k2")), alg: "RS512" },
+        good,
+      ] as { kid: string; kty: string }[],
+    });
+    expect(await verifyAccessJwt(await token(), APP, { now: NOW, fetcher })).toBe(
+      "id-do-noah.access",
+    );
+    expect(
+      await verifyAccessJwt(await token({}, { pair: other, kid: "k2" }), APP, {
+        now: NOW,
+        fetcher,
+      }),
+    ).toBeNull();
+  });
+
+  it("kids desconhecidos buscam as chaves de novo no máximo uma vez por minuto", async () => {
+    const fetcher = await fetcherFor([signing, "k1"]);
+    await verifyAccessJwt(await token(), APP, { now: NOW, fetcher });
+    for (let i = 0; i < 20; i += 1) {
+      await verifyAccessJwt(await token({}, { kid: `falso-${i}` }), APP, {
+        now: NOW + i * 1_000,
+        fetcher,
+      });
+    }
+    expect(fetches).toBe(1);
+    await verifyAccessJwt(await token({}, { kid: "falso-depois" }), APP, {
+      now: NOW + 61_000,
+      fetcher,
+    });
     expect(fetches).toBe(2);
   });
 });
@@ -183,6 +222,10 @@ describe("parseClients", () => {
       JSON.stringify({ a: { name: "noah", exposed: true, privileged: true, ownerClaims: false } }),
     ],
     [
+      "com Client ID repetido",
+      '{"a": {"name": "noah", "exposed": true, "privileged": false, "ownerClaims": false}, "a": {"name": "alan", "exposed": false, "privileged": true, "ownerClaims": false}}',
+    ],
+    [
       "com nome repetido",
       JSON.stringify({
         a: { name: "noah", exposed: true, privileged: false, ownerClaims: false },
@@ -200,7 +243,7 @@ describe("parseClients", () => {
     expect(of("id-do-noah.access")).toEqual({
       client: "noah",
       mode: "exposed",
-      exposed: ["noah"],
+      trusted: ["alan", "mac"],
       ownerClaims: ["noah"],
     });
     expect(of("id-do-alan.access").mode).toBe("privileged");

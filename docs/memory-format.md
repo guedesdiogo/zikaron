@@ -624,7 +624,7 @@ origin:
 ```
 
 - **O vocabulário é fechado.** Uma chave desconhecida, um valor fora da lista, um `client` fora do padrão (minúsculas, dígitos e hífen, até 40) ou uma evidência com quebra de linha invalidam o bloco inteiro, com aviso. A nota continua indexada.
-- **O índice guarda o bloco em colunas** (`origin_client`, `origin_channel`, `origin_source`, `origin_evidence`, `origin_review`, `origin_taint`), para as regras de leitura do ADR-0001 virarem SQL.
+- **O índice guarda o bloco em colunas** (`origin_client`, `origin_channel`, `origin_source`, `origin_evidence`, `origin_review`, `origin_taint`), para as regras de leitura do ADR-0001 virarem SQL, e `origin_invalid` quando havia um `origin` que não pôde ser lido: um bloco quebrado, ou um frontmatter ignorado inteiro com uma linha `origin:`. Uma versão assim nunca vale como do dono (schema 5).
 - **O arquivo não decide a confiança sozinho:** quem escreveu o blob conta mais que o bloco (ADR-0001 §3).
 
 ### Tipos novos

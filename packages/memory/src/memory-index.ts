@@ -138,8 +138,11 @@ export interface IndexDump {
   links: { path: string; commit: string; kind: string; by: string; target: string }[];
 }
 
-/** Version 4 (#6) added `archived`, `status`, `link` and the `origin` columns. */
-export const SCHEMA_VERSION = 4;
+/**
+ * Version 4 (#6) added `archived`, `status`, `link` and the `origin` columns; version 5 (#9),
+ * `origin_invalid`.
+ */
+export const SCHEMA_VERSION = 5;
 
 const DERIVED_SCHEMA = `
 CREATE TABLE commits (
@@ -187,6 +190,7 @@ CREATE TABLE versions (
   origin_evidence TEXT,
   origin_review TEXT,
   origin_taint TEXT,
+  origin_invalid INTEGER NOT NULL,
   UNIQUE (path, commit_sha)
 );
 CREATE UNIQUE INDEX versions_current_path ON versions (path) WHERE is_current = 1;
@@ -573,9 +577,9 @@ export class MemoryIndex {
              recorded_at, memory_id, scope, kind, tier, level, confidence, evergreen, pinned,
              valid_from, invalid_at, title, abstract, body, path_search, link_path, link_name,
              title_key, frontmatter, warnings, archived, status, link, origin_client, origin_channel,
-             origin_source, origin_evidence, origin_review, origin_taint)
+             origin_source, origin_evidence, origin_review, origin_taint, origin_invalid)
            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-             ?, ?, ?, ?, ?, ?, ?)
+             ?, ?, ?, ?, ?, ?, ?, ?)
            RETURNING rowid`,
           change.path,
           commit.sha,
@@ -611,6 +615,7 @@ export class MemoryIndex {
           note.origin?.evidence ?? null,
           note.origin?.review ?? null,
           note.origin?.taint ?? null,
+          note.originInvalid ? 1 : 0,
         )[0]?.rowid;
         if (rowid === undefined) throw new Error("the version insert returned no row id");
         for (const entity of note.entities) {
@@ -1138,6 +1143,10 @@ export class MemoryIndex {
     path: string,
     options: { scopes?: readonly Scope[]; reader?: ReaderPolicy } = {},
   ): ResolvedLink[] {
+    // A note the reader may not see has no links for them: its targets are its own text.
+    if (options.reader !== undefined && this.current(path, { reader: options.reader }) === null) {
+      return [];
+    }
     return this.#exec<{ kind: string; by: string; target: string }>(
       `SELECT l.kind, l.by, l.target FROM links l JOIN versions v ON v.rowid = l.version
        WHERE v.path = ? AND v.is_current = 1 ORDER BY l.kind, l.by, l.target`,

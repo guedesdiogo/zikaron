@@ -87,6 +87,11 @@ export interface Note {
   link: string | null;
   /** Who wrote this version, through which channel, and from where (ADR-0001 §3). */
   origin: Origin | null;
+  /**
+   * An `origin` was there and couldn't be read: a bad block, or frontmatter ignored as a whole that
+   * holds an `origin` key. Such a version is never the owner's, whoever committed it (ADR-0001 §3).
+   */
+  originInvalid: boolean;
   /** Every key, unknown ones included, as parsed. */
   frontmatter: Record<string, unknown>;
   body: string;
@@ -262,6 +267,7 @@ export function readNote(path: string, text: string): Note | null {
     warnings.push(`more than ${MAX_LINKS} links; the rest are not indexed`);
   }
 
+  const origin = field(frontmatter, "origin", warnings, parseOrigin);
   const flag = (key: string) =>
     field(frontmatter, key, warnings, (value) => (typeof value === "boolean" ? value : null)) ??
     false;
@@ -300,7 +306,10 @@ export function readNote(path: string, text: string): Note | null {
       ? field(frontmatter, "status", warnings, oneOf(STATUSES))
       : null,
     link: kind === "document" ? documentLink(frontmatter, warnings) : null,
-    origin: field(frontmatter, "origin", warnings, parseOrigin),
+    origin,
+    originInvalid:
+      (frontmatter.origin !== undefined && frontmatter.origin !== null && origin === null) ||
+      (yaml !== null && Object.keys(frontmatter).length === 0 && /^origin\s*:/m.test(yaml)),
     frontmatter,
     body,
     links,

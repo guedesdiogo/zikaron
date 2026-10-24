@@ -152,7 +152,7 @@ describe("Vault provenance", () => {
         new MemoryIndex(state.storage).trust(path, {
           client: "beta",
           mode: "privileged",
-          exposed: ["alfa"],
+          trusted: ["beta"],
           ownerClaims: [],
         }),
       );

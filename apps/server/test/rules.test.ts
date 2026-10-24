@@ -33,6 +33,21 @@ describe("decideWrite", () => {
     });
   });
 
+  it("um canal que não é o provedor nunca diz que o dono disse", () => {
+    const decision = decideWrite(
+      NOAH,
+      { channel: "mcp" as unknown as "tool", source: "owner" },
+      null,
+    );
+    expect(decision).toMatchObject({ ok: true, level: "inferred", origin: { source: "agent" } });
+  });
+
+  it("para um cliente privileged, a nota contaminada não existe", () => {
+    expect(
+      decideWrite(ALAN, { channel: "tool", source: "agent" }, { ...PLAIN, tainted: true }),
+    ).toEqual({ ok: false, reason: "not_found" });
+  });
+
   it("pelo canal de ferramenta, nada é do dono nem explicit", () => {
     const decision = decideWrite(ALAN, { channel: "tool", source: "owner" }, null);
     expect(decision).toMatchObject({
@@ -97,8 +112,14 @@ describe("decideWrite", () => {
   });
 
   it("por cima de uma versão contaminada, a nova herda a marca", () => {
+    const KELPIE: Client = {
+      name: "kelpie",
+      exposed: false,
+      privileged: false,
+      ownerClaims: false,
+    };
     expect(
-      decideWrite(ALAN, { channel: "tool", source: "agent" }, { ...PLAIN, tainted: true }),
+      decideWrite(KELPIE, { channel: "tool", source: "agent" }, { ...PLAIN, tainted: true }),
     ).toMatchObject({ ok: true, origin: { taint: "inherited" } });
     expect(decideWrite(ALAN, { channel: "tool", source: "agent" }, PLAIN)).toMatchObject({
       ok: true,

@@ -30,7 +30,13 @@ export interface Previous {
   client: string | null;
 }
 
-export type WriteRefusal = "cron" | "pinned" | "owners_note" | "core_note" | "archived";
+export type WriteRefusal =
+  | "cron"
+  | "pinned"
+  | "owners_note"
+  | "core_note"
+  | "archived"
+  | "not_found";
 
 export type WriteDecision =
   | { ok: true; origin: Origin; level: Level }
@@ -53,6 +59,7 @@ function evidenceLine(value: string | undefined): string | null {
  * - uma rotina agendada não grava, e nenhum agente fixa uma nota;
  * - pelo canal de ferramenta, nada é `owner` nem `explicit`;
  * - `agent` e `external` entram com `review: pending` e `level: inferred`, até o «sim»;
+ * - para um cliente `privileged`, uma nota contaminada responde como inexistente;
  * - nenhuma gravação substitui uma nota arquivada ou do núcleo;
  * - uma nota que vale como do dono só é substituída pela palavra do dono, isto é, `source: owner`
  *   pelo provedor de um cliente com `ownerClaims` (o «corrija» do Q6, ADR-0003);
@@ -65,10 +72,13 @@ export function decideWrite(
 ): WriteDecision {
   if (claim.context === "cron") return { ok: false, reason: "cron" };
   if (claim.pinned === true) return { ok: false, reason: "pinned" };
+  // O teto é uma lista de permissão: só o provedor pode dizer que o dono disse.
   const source: Source =
-    claim.channel === "tool" && claim.source === "owner" ? "agent" : claim.source;
+    claim.channel !== "provider" && claim.source === "owner" ? "agent" : claim.source;
   const ownersWord = source === "owner" && claim.channel === "provider" && client.ownerClaims;
   if (previous !== null) {
+    // Para um cliente `privileged`, a nota contaminada não existe: nem para ler, nem para gravar.
+    if (client.privileged && previous.tainted) return { ok: false, reason: "not_found" };
     if (previous.archived) return { ok: false, reason: "archived" };
     if (previous.inCore) return { ok: false, reason: "core_note" };
     if (previous.ownerGrade && !ownersWord) return { ok: false, reason: "owners_note" };

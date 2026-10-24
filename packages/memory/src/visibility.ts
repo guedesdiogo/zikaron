@@ -16,8 +16,12 @@ export interface ReaderPolicy {
   /** O cliente que lê. */
   client: string;
   mode: ReaderMode;
-  /** Os clientes que leem conteúdo de fora. */
-  exposed: readonly string[];
+  /**
+   * Os clientes configurados que não leem conteúdo de fora. É uma lista de permissão: um cliente
+   * que saiu da configuração, ou que nunca esteve nela, conta como `exposed`, para que tirar um
+   * cliente comprometido da configuração não limpe a marca das notas dele.
+   */
+  trusted: readonly string[];
   /** Os clientes cujo «o dono disse», pelo provedor, vale como do dono. */
   ownerClaims: readonly string[];
 }
@@ -26,13 +30,13 @@ export interface ReaderPolicy {
 const AUTHORED = "EXISTS (SELECT 1 FROM authored_blobs a WHERE a.blob_sha = v.blob_sha)";
 
 /**
- * Vale como do dono: um blob que o servidor não escreveu e que não espera o «sim»; ou um blob do
- * servidor com `source: owner` pelo provedor, de um cliente com `ownerClaims`, sem pendência nem
- * contaminação herdada.
+ * Vale como do dono: um blob que o servidor não escreveu, que não espera o «sim» e cujo `origin`,
+ * se havia, pôde ser lido; ou um blob do servidor com `source: owner` pelo provedor, de um cliente
+ * com `ownerClaims`, sem pendência nem contaminação herdada.
  */
 export function ownerGradeSql(policy: ReaderPolicy): [string, SqlValue[]] {
   return [
-    `((NOT ${AUTHORED} AND v.origin_review IS NULL)
+    `((NOT ${AUTHORED} AND v.origin_review IS NULL AND v.origin_invalid = 0)
       OR (${AUTHORED} AND v.origin_source IS 'owner' AND v.origin_channel IS 'provider'
           AND v.origin_review IS NULL AND v.origin_taint IS NULL
           AND coalesce(v.origin_client, '') IN (SELECT value FROM json_each(?))))`,
@@ -41,16 +45,19 @@ export function ownerGradeSql(policy: ReaderPolicy): [string, SqlValue[]] {
 }
 
 /**
- * Contaminada: não vale como do dono e veio de fora, ou foi gravada por um cliente `exposed`, ou
- * herdou a marca. Um blob do servidor sem `origin` também conta: na dúvida, fica de fora.
+ * Contaminada: não vale como do dono e veio de fora, ou herdou a marca, ou tem um `origin` que não
+ * pôde ser lido, ou foi gravada por um cliente fora da lista de confiáveis. Na dúvida, fica de fora:
+ * um blob do servidor sem `origin` também conta.
  */
 export function taintedSql(policy: ReaderPolicy): [string, SqlValue[]] {
   const [owner, bindings] = ownerGradeSql(policy);
   return [
     `(NOT ${owner} AND (v.origin_source IS 'external' OR v.origin_taint IS 'inherited'
-      OR coalesce(v.origin_client, '') IN (SELECT value FROM json_each(?))
-      OR (${AUTHORED} AND v.origin_client IS NULL)))`,
-    [...bindings, JSON.stringify(policy.exposed)],
+      OR v.origin_invalid = 1
+      OR (${AUTHORED} AND v.origin_client IS NULL)
+      OR (v.origin_client IS NOT NULL
+          AND v.origin_client NOT IN (SELECT value FROM json_each(?)))))`,
+    [...bindings, JSON.stringify(policy.trusted)],
   ];
 }
 
@@ -63,9 +70,8 @@ export function visibleSql(policy: ReaderPolicy): [string, SqlValue[]] {
   }
   const [owner, bindings] = ownerGradeSql(policy);
   return [
-    `(${owner} OR v.origin_client IS ?
-      OR (v.origin_client IS NOT NULL
-          AND v.origin_client NOT IN (SELECT value FROM json_each(?))))`,
-    [...bindings, policy.client, JSON.stringify(policy.exposed)],
+    `(${owner} OR (v.origin_invalid = 0 AND v.origin_client IS ?)
+      OR (v.origin_invalid = 0 AND v.origin_client IN (SELECT value FROM json_each(?))))`,
+    [...bindings, policy.client, JSON.stringify(policy.trusted)],
   ];
 }
