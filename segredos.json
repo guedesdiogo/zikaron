@@ -7,7 +7,77 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://dash.cloudflare.com/profile/api-tokens",
-      "instrucao": "Crie um token com o modelo «Edit Cloudflare Workers», só na conta do Zikaron, e cole o valor."
+      "instrucao": "Crie um token próprio só com Account › Workers Scripts › Edit e Account › Account Settings › Read, na conta do Zikaron, e cole o valor."
+    },
+    {
+      "nome": "CLOUDFLARE_ACCOUNT_ID",
+      "destino": "gh",
+      "ambiente": "staging",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://dash.cloudflare.com/",
+      "instrucao": "O Account ID da conta do Zikaron (na página da conta, ao lado)."
+    },
+    {
+      "nome": "ZIKARON_GITHUB_APP_ID",
+      "destino": "gh",
+      "ambiente": "staging",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://github.com/settings/apps",
+      "instrucao": "O App ID do GitHub App zikaron."
+    },
+    {
+      "nome": "ZIKARON_GITHUB_INSTALLATION_ID",
+      "destino": "gh",
+      "ambiente": "staging",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://github.com/settings/installations",
+      "instrucao": "O número no fim do endereço da instalação do App zikaron no cofre de teste."
+    },
+    {
+      "nome": "ACCESS_TEAM_DOMAIN",
+      "destino": "gh",
+      "ambiente": "staging",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://one.dash.cloudflare.com/",
+      "instrucao": "https://<time>.cloudflareaccess.com, sem barra no fim."
+    },
+    {
+      "nome": "ACCESS_AUD",
+      "destino": "gh",
+      "ambiente": "staging",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://one.dash.cloudflare.com/",
+      "instrucao": "Access › Applications › a aplicação do zikaron-staging › o Application Audience (AUD) Tag."
+    },
+    {
+      "nome": "ZIKARON_CLIENTS",
+      "destino": "gh",
+      "ambiente": "staging",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "instrucao": "O JSON de docs/api.md, com os Client IDs de noah-teste, alan-teste e outro-teste, numa linha."
+    },
+    {
+      "nome": "STAGING_URL",
+      "destino": "gh",
+      "ambiente": "staging",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "instrucao": "O endereço do zikaron-staging exatamente como o deploy o imprime, sem barra no fim."
+    },
+    {
+      "nome": "E2E_NOAH_CLIENT_ID",
+      "destino": "gh",
+      "ambiente": "staging",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://one.dash.cloudflare.com/",
+      "instrucao": "Access › Service credentials › noah-teste: o Client ID."
     },
     {
       "nome": "E2E_NOAH_CLIENT_SECRET",
@@ -16,7 +86,16 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://one.dash.cloudflare.com/",
-      "instrucao": "Access › Service credentials › o token noah-teste: o Client Secret."
+      "instrucao": "Access › Service credentials › noah-teste: o Client Secret."
+    },
+    {
+      "nome": "E2E_ALAN_CLIENT_ID",
+      "destino": "gh",
+      "ambiente": "staging",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://one.dash.cloudflare.com/",
+      "instrucao": "Access › Service credentials › alan-teste: o Client ID."
     },
     {
       "nome": "E2E_ALAN_CLIENT_SECRET",
@@ -25,7 +104,16 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://one.dash.cloudflare.com/",
-      "instrucao": "Access › Service credentials › o token alan-teste: o Client Secret."
+      "instrucao": "Access › Service credentials › alan-teste: o Client Secret."
+    },
+    {
+      "nome": "E2E_OUTRO_CLIENT_ID",
+      "destino": "gh",
+      "ambiente": "staging",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://one.dash.cloudflare.com/",
+      "instrucao": "Access › Service credentials › outro-teste: o Client ID."
     },
     {
       "nome": "E2E_OUTRO_CLIENT_SECRET",
@@ -34,7 +122,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://one.dash.cloudflare.com/",
-      "instrucao": "Access › Service credentials › o token outro-teste: o Client Secret."
+      "instrucao": "Access › Service credentials › outro-teste: o Client Secret."
     },
     {
       "nome": "E2E_VAULT_TOKEN",

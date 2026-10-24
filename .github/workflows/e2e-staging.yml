@@ -1,7 +1,8 @@
 name: E2E staging
 
 # O roteiro ponta a ponta do staging (Story 1.8), à mão, contra o cofre de teste. As credenciais
-# são de clientes de teste e ficam no environment `staging`, que só aceita a main.
+# são de clientes de teste e ficam como segredos no environment `staging`, que só aceita a main:
+# o log é público, e só os segredos saem mascarados.
 on:
   workflow_dispatch:
 
@@ -23,11 +24,11 @@ jobs:
           node-version: 22
       - name: scripts/e2e-staging.mjs
         env:
-          STAGING_URL: ${{ vars.STAGING_URL }}
+          STAGING_URL: ${{ secrets.STAGING_URL }}
           VAULT_REPOSITORY: ${{ vars.VAULT_REPOSITORY }}
-          E2E_NOAH_CLIENT_ID: ${{ vars.E2E_NOAH_CLIENT_ID }}
-          E2E_ALAN_CLIENT_ID: ${{ vars.E2E_ALAN_CLIENT_ID }}
-          E2E_OUTRO_CLIENT_ID: ${{ vars.E2E_OUTRO_CLIENT_ID }}
+          E2E_NOAH_CLIENT_ID: ${{ secrets.E2E_NOAH_CLIENT_ID }}
+          E2E_ALAN_CLIENT_ID: ${{ secrets.E2E_ALAN_CLIENT_ID }}
+          E2E_OUTRO_CLIENT_ID: ${{ secrets.E2E_OUTRO_CLIENT_ID }}
           E2E_NOAH_CLIENT_SECRET: ${{ secrets.E2E_NOAH_CLIENT_SECRET }}
           E2E_ALAN_CLIENT_SECRET: ${{ secrets.E2E_ALAN_CLIENT_SECRET }}
           E2E_OUTRO_CLIENT_SECRET: ${{ secrets.E2E_OUTRO_CLIENT_SECRET }}

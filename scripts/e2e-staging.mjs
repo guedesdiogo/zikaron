@@ -80,19 +80,38 @@ async function github(method, path, body) {
   return response.json();
 }
 
-const seen = async (client, path) => (await call(client, "/v1/read", { path })).json?.ok === true;
-const searched = async (client, path) =>
-  ((await call(client, "/v1/search", { query: MARK, k: 10 })).json?.notes ?? []).some(
-    (note) => note.path === path,
-  );
-const recalled = async (client, path) =>
-  (
-    (await call(client, "/v1/recall", { question: `${MARK} sintético` })).json?.paths ?? []
-  ).includes(path);
-const pending = async (client, path) =>
-  ((await call(client, "/v1/pending", {})).json?.notes ?? []).some((note) => note.path === path);
+/** Uma chamada que tem de dar certo: 200 com JSON; senão o roteiro para, sem passar em falso. */
+async function answered(client, route, body, headers) {
+  const result = await call(client, route, body, headers);
+  if (result.status !== 200 || result.json === null) {
+    throw new Error(`${route} respondeu ${result.status}`);
+  }
+  return result.json;
+}
+
+const seen = async (client, path) => {
+  const json = await answered(client, "/v1/read", { path });
+  if (json.ok === true) return true;
+  if (json.reason === "not_found") return false;
+  throw new Error(`/v1/read recusou: ${json.reason}`);
+};
+const searched = async (client, path) => {
+  const json = await answered(client, "/v1/search", { query: MARK, k: 10 });
+  if (json.ok !== true || !Array.isArray(json.notes)) throw new Error("/v1/search falhou");
+  return json.notes.some((note) => note.path === path);
+};
+const recalled = async (client, path) => {
+  const json = await answered(client, "/v1/recall", { question: `${MARK} sintético` });
+  if (!Array.isArray(json.paths)) throw new Error("/v1/recall falhou");
+  return json.paths.includes(path);
+};
+const pending = async (client, path) => {
+  const json = await answered(client, "/v1/pending", {});
+  if (json.ok !== true || !Array.isArray(json.notes)) throw new Error("/v1/pending falhou");
+  return json.notes.some((note) => note.path === path);
+};
 const mcpSearch = async (client, path) => {
-  const { json } = await call(
+  const json = await answered(
     client,
     "/mcp",
     {
@@ -103,7 +122,10 @@ const mcpSearch = async (client, path) => {
     },
     { Accept: "application/json, text/event-stream" },
   );
-  return JSON.stringify(json?.result ?? {}).includes(path);
+  if (json.error !== undefined || json.result === undefined || json.result.isError === true) {
+    throw new Error("memory_search falhou");
+  }
+  return JSON.stringify(json.result).includes(path);
 };
 
 async function main() {
@@ -157,6 +179,8 @@ async function main() {
   check("alan não vê a nota de fora nas pendentes", !(await pending("alan", outsidePath)));
   check("alan não acha a nota de fora pelo MCP", !(await mcpSearch("alan", outsidePath)));
   check("noah acha a nota de fora na busca", await searched("noah", outsidePath));
+  check("noah acha a nota de fora pelo MCP", await mcpSearch("noah", outsidePath));
+  check("noah vê a nota de fora nas pendentes", await pending("noah", outsidePath));
   check("alan lê o que o dono disse", await seen("alan", saidPath));
   check("outro não vê a nota de fora", !(await seen("outro", outsidePath)));
 

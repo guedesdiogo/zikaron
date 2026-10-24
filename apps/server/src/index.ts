@@ -24,16 +24,16 @@ function errorName(error: unknown): string {
 }
 
 /**
- * Recebe uma entrega do webhook do GitHub. Sem segredo, ou com a assinatura ausente ou errada,
- * responde 401 e não sincroniza nada. Um `ping` responde 200; um `push` só pede a sincronização,
- * sem ler nem gravar nada do corpo além do ref; os outros eventos são ignorados com 202.
- */
-/**
  * O maior corpo que o webhook lê antes de conferir a assinatura: o GitHub limita as entregas a
  * 25 MB, e um push do cofre fica muito abaixo disso.
  */
 export const MAX_WEBHOOK_BYTES = 5_000_000;
 
+/**
+ * Recebe uma entrega do webhook do GitHub. Sem segredo, ou com a assinatura ausente ou errada,
+ * responde 401 e não sincroniza nada. Um `ping` responde 200; um `push` só pede a sincronização,
+ * sem ler nem gravar nada do corpo além do ref; os outros eventos são ignorados com 202.
+ */
 async function receiveWebhook(request: Request, env: VaultEnv): Promise<Response> {
   // O tamanho é conferido antes da assinatura: quem não tem o segredo não faz o Worker ler
   // megabytes. O `Content-Length` declarado barra antes de ler; sem ele, a leitura para no limite.
