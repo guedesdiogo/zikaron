@@ -11,6 +11,7 @@ import {
   inert,
   oneLine,
 } from "./retrieve.ts";
+import type { ReaderPolicy } from "./visibility.ts";
 
 /** Where the owner's profile lives: what Kelpie concluded about the owner, and what they wrote. */
 const PROFILE_ROOT = "memory/profile/";
@@ -20,6 +21,8 @@ export interface CoreOptions {
   budgetTokens: number;
   /** A note that stopped being true before this stays out, as recall leaves it out. */
   now: number;
+  /** Only the notes this reader may see (ADR-0001 §5). */
+  reader?: ReaderPolicy;
 }
 
 export interface Core {
@@ -85,7 +88,10 @@ export function coreBlock(index: MemoryIndex, options: CoreOptions): Core {
   const loaded: string[] = [];
   let omitted = 0;
   for (const path of paths) {
-    const version = index.current(path);
+    const version = index.current(
+      path,
+      options.reader === undefined ? {} : { reader: options.reader },
+    );
     if (version === null) continue;
     const head = `## ${oneLine(version.title, HEADING_TITLE_CHARS)} (${oneLine(path, HEADING_PATH_CHARS)}) [${id}]\n`;
     const entry = `${head}${inert(bodyWithoutHeading(version.title, version.body))}`;

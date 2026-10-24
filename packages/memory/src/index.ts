@@ -139,6 +139,14 @@ export {
 } from "./summary.ts";
 export { instantOf, isDate, isDateTime } from "./time.ts";
 export {
+  ownerGradeSql,
+  READER_MODES,
+  type ReaderMode,
+  type ReaderPolicy,
+  taintedSql,
+  visibleSql,
+} from "./visibility.ts";
+export {
   MAX_DOCUMENT_BODY,
   MemoryFormatError,
   type MemoryInput,
