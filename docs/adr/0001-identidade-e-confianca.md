@@ -72,9 +72,9 @@ O que o pedido pode dizer e o servidor limita:
 
 ### 4. A regra de gravação (Q3)
 
-- `source: owner` pelo canal do provedor entra direto, com `level: explicit` e a evidência.
+- `source: owner` pelo canal do provedor, de um cliente com `ownerClaims`, entra direto, com `level: explicit` e a evidência. De um cliente sem `ownerClaims`, entra com `review: pending` e `level: inferred`, como uma conclusão: a palavra dele não vale como do Diogo, e o «sim» no cofre é o que a confirma.
 - `agent` e `external` entram com `review: pending` e `level: inferred`. O «sim» do Diogo é tirar o `review: pending` no cofre (Obsidian ou GitHub). Uma página de confirmação atrás do Access, com o login dele, fica para depois.
-- **Rotinas agendadas não gravam.** Uma gravação com `context: cron` é recusada sem commit. Quem marca o contexto é o provedor; o servidor recusa.
+- **Rotinas agendadas não gravam.** Uma gravação, um arquivamento ou um «esqueça» com `context: cron` é recusado sem commit. Quem marca o contexto é o provedor ou o cliente MCP; o servidor recusa.
 - **Nenhum agente reescreve** uma nota que vale como do Diogo, uma nota do núcleo (pinned, ou em `profile/`) ou uma nota arquivada. A exceção, só para a nota do Diogo, é a palavra do próprio Diogo pelo provedor ([ADR-0003](0003-corrija-pela-palavra-do-dono.md)). São as regras guedesdiogo/kelpie#149 e guedesdiogo/kelpie#168, agora pelo servidor.
 - **«Esqueça» vindo de um agente** só alcança as notas do próprio cliente e as pendentes. Uma nota do Diogo sai pelo cofre. O git guarda tudo.
 - **Nenhum agente pina uma nota.** O `pinned` só vem do cofre.

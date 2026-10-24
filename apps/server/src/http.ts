@@ -8,16 +8,42 @@ export function json(status: number, body: unknown, headers: Record<string, stri
   return Response.json(body, { status, headers });
 }
 
+/**
+ * O corpo como texto, ou null quando passa de `max` bytes. Lê aos pedaços e para no limite, para um
+ * corpo sem `Content-Length` não entrar inteiro na memória.
+ */
+export async function readUpTo(request: Request, max: number): Promise<string | null> {
+  if (request.body === null) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 /** O corpo de um pedido como JSON, ou o porquê de não ser: grande demais, ou JSON que não vale. */
 export async function readJson(
   request: Request,
 ): Promise<{ ok: true; value: unknown } | { ok: false; reason: "too_large" | "invalid_json" }> {
   const declared = Number(request.headers.get("Content-Length") ?? "0");
   if (declared > MAX_REQUEST_BYTES) return { ok: false, reason: "too_large" };
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > MAX_REQUEST_BYTES) {
-    return { ok: false, reason: "too_large" };
-  }
+  const text = await readUpTo(request, MAX_REQUEST_BYTES);
+  if (text === null) return { ok: false, reason: "too_large" };
   try {
     return { ok: true, value: JSON.parse(text) };
   } catch {

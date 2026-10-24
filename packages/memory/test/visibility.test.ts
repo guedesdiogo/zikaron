@@ -176,8 +176,13 @@ function provenanceLines(text: string): Record<string, string> {
   const lines = text.split("\n");
   const found: Record<string, string> = {};
   lines.forEach((line, i) => {
-    const path = /^## .* \((memory\/notes\/[^)]+)\.md\) \[[0-9a-f]{16}\]$/.exec(line)?.[1];
-    if (path !== undefined) found[path.slice("memory/notes/".length)] = lines[i + 1] ?? "";
+    const heading = /^## .* \((memory\/notes\/[^)]+)\.md\) \[([0-9a-f]{16})\]$/.exec(line);
+    if (heading === null) return;
+    const [, path = "", id] = heading;
+    // A linha de origem termina no id do bloco, como o cabeçalho (#16).
+    const origin = lines[i + 1] ?? "";
+    expect(origin.endsWith(` [${id}]`)).toBe(true);
+    found[path.slice("memory/notes/".length)] = origin.slice(0, -` [${id}]`.length);
   });
   return found;
 }
@@ -311,5 +316,41 @@ describe("as falhas que a revisão do PR #11 achou", () => {
       expect(index.links(pathOf("noah-externa"), { reader: ALAN })).toEqual([]);
       expect(index.links(pathOf("noah-externa"), { reader: NOAH })).not.toEqual([]);
     });
+  });
+});
+
+describe("o núcleo de quem não vê tudo", () => {
+  it("uma nota escondida não come o orçamento do rodapé", async () => {
+    // Quatro tamanhos de nota e um orçamento que anda de token em token: algum cruza a fronteira
+    // de um caractere que o rodapé de duas notas, em vez de uma, tomaria.
+    const visibles = ["", "x", "xx", "xxx"].map(
+      (pad) => `# A\n\nUma nota curta do perfil.${pad}\n`,
+    );
+    const hidden = note("x", {
+      client: "noah",
+      channel: "tool",
+      source: "external",
+      review: "pending",
+    });
+    const cores = async (name: string, withHidden: boolean, visible: string) =>
+      runInDurableObject(env.INDEX_HOST.getByName(name), async (_i, state) => {
+        const index = new MemoryIndex(state.storage);
+        const files: Record<string, string> = { "memory/profile/a.md": visible };
+        if (withHidden) {
+          files["memory/profile/x.md"] = hidden;
+          index.markAuthored([await gitBlobSha(hidden)]);
+        }
+        await index.applyCommit(new FakeVault().commit(files));
+        const now = Date.parse("2026-10-24T00:00:00Z");
+        return Array.from({ length: 120 }, (_, i) => 40 + i).map(
+          (budgetTokens) =>
+            coreBlock(index, { agentId: "alan", budgetTokens, now, reader: ALAN }).paths.length,
+        );
+      });
+    for (const [i, visible] of visibles.entries()) {
+      expect(await cores(`nucleo-com-escondida-${i}`, true, visible)).toEqual(
+        await cores(`nucleo-sem-escondida-${i}`, false, visible),
+      );
+    }
   });
 });

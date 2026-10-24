@@ -79,9 +79,16 @@ export function coreBlock(index: MemoryIndex, options: CoreOptions): Core {
   const notes = index
     .lifecycleNotes()
     .filter((note) => note.invalidAt === null || note.invalidAt > options.now);
-  const paths = ([0, 1, 2] as const).flatMap((group) =>
-    notes.filter((note) => coreGroup(note, options.agentId) === group).map((note) => note.path),
-  );
+  // Só as notas que o leitor vê contam, também para a reserva do rodapé: as outras não existem
+  // para ele (ADR-0001 §5).
+  const paths = ([0, 1, 2] as const)
+    .flatMap((group) =>
+      notes.filter((note) => coreGroup(note, options.agentId) === group).map((note) => note.path),
+    )
+    .filter(
+      (path) =>
+        options.reader === undefined || index.current(path, { reader: options.reader }) !== null,
+    );
   if (paths.length === 0) return empty;
 
   const id = blockId();
@@ -100,7 +107,7 @@ export function coreBlock(index: MemoryIndex, options: CoreOptions): Core {
     );
     if (version === null) continue;
     const origin = provenanceLine(index, version, options.reader ?? UNCLAIMED);
-    const head = `## ${oneLine(version.title, HEADING_TITLE_CHARS)} (${oneLine(path, HEADING_PATH_CHARS)}) [${id}]\n${origin}\n`;
+    const head = `## ${oneLine(version.title, HEADING_TITLE_CHARS)} (${oneLine(path, HEADING_PATH_CHARS)}) [${id}]\n${origin} [${id}]\n`;
     const entry = `${head}${inert(bodyWithoutHeading(version.title, version.body))}`;
     const cost = entry.length + (entries.length > 0 ? 2 : 0);
     if (cost > left) {

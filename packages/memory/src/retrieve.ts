@@ -487,7 +487,8 @@ export function pack(index: MemoryIndex, hits: readonly SearchHit[], options: Pa
     if (version === null) continue;
     const title = oneLine(version.title, HEADING_TITLE_CHARS);
     const origin = provenanceLine(index, version, policy);
-    const head = `## ${title} (${oneLine(version.path, HEADING_PATH_CHARS)}) [${id}]\n${origin}\n`;
+    // A linha de origem leva o id do bloco, como o cabeçalho: o corpo de uma nota não a forja.
+    const head = `## ${title} (${oneLine(version.path, HEADING_PATH_CHARS)}) [${id}]\n${origin} [${id}]\n`;
     const body = inert(bodyWithoutHeading(version.title, version.body));
     const descriptor =
       version.abstract === null ? cut(body, DESCRIPTOR_CHARS) : inert(version.abstract);

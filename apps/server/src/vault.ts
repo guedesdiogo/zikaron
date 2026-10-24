@@ -1017,10 +1017,12 @@ export class Vault extends DurableObject<VaultEnv> {
    * «Esqueça» vindo de um cliente (ADR-0001 §4): só uma nota que ele vê, gravada por ele ou à espera
    * do «sim», fora do núcleo e que não vale como do dono. O git guarda a versão anterior.
    */
-  async forgetNote(name: string, path: string): Promise<ForgetNoteResult> {
+  async forgetNote(name: string, path: string, context?: string): Promise<ForgetNoteResult> {
     const notFound: ForgetNoteResult = { ok: false, reason: "not_found" };
     const who = this.#who(name);
     if (who === null) return { ok: false, reason: "unauthorized" };
+    // Esquecer é um commit: uma rotina agendada não grava, nem para remover (Q3).
+    if (context === "cron") return { ok: false, reason: "cron" };
     if (typeof path !== "string" || path.length > MAX_PATH_CHARS) return notFound;
     if (this.#backend() === null) return { ok: false, reason: "vault_off" };
     const { client, policy } = who;

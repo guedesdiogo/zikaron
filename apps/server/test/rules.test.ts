@@ -48,6 +48,14 @@ describe("decideWrite", () => {
     ).toEqual({ ok: false, reason: "not_found" });
   });
 
+  it("o «o dono disse» de um cliente sem ownerClaims fica pendente e inferido", () => {
+    expect(decideWrite(ALAN, { channel: "provider", source: "owner" }, null)).toMatchObject({
+      ok: true,
+      level: "inferred",
+      origin: { source: "owner", review: "pending" },
+    });
+  });
+
   it("pelo canal de ferramenta, nada é do dono nem explicit", () => {
     const decision = decideWrite(ALAN, { channel: "tool", source: "owner" }, null);
     expect(decision).toMatchObject({

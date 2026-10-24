@@ -109,9 +109,15 @@ const ROUTES: Record<string, (body: Body, vault: VaultStub, client: string) => P
       );
     },
     async forget(body, vault, client) {
-      const problems = fieldProblems(body, { path: "string" }, ["path"]);
+      const problems = fieldProblems(body, { path: "string", context: "string" }, ["path"]);
       if (problems.length > 0) return invalid(...problems);
-      return answer(await vault.forgetNote(client, body.path as string));
+      return answer(
+        await vault.forgetNote(
+          client,
+          body.path as string,
+          typeof body.context === "string" ? body.context : undefined,
+        ),
+      );
     },
     async archive(body, vault, client) {
       const problems = fieldProblems(body, { path: "string", version: "string", ...CLAIM_FIELDS }, [

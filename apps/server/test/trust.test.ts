@@ -573,14 +573,19 @@ describe("o arquivo e o «esqueça»", () => {
       ok: false,
       reason: "core_note",
     });
-    expect((await v1("alan", "forget", { path: macs })).body).toEqual({
-      ok: false,
-      reason: "not_own",
-    });
-    expect((await tool("alan", "memory_forget", { path: macs })).text).toContain(
-      "Recusada (not_own)",
+    // O Mac não tem ownerClaims: o «o dono disse» dele fica pendente (#16), e uma nota pendente
+    // pode ser esquecida por quem a vê; uma nota do dono, não.
+    expect((await tool("alan", "memory_forget", { path: owners })).text).toContain(
+      "Recusada (owners_note)",
     );
-    expect((await v1("mac", "forget", { path: macs })).body).toEqual({ ok: true, path: macs });
+    expect((await v1("mac", "forget", { path: macs, context: "cron" })).body).toEqual({
+      ok: false,
+      reason: "cron",
+    });
+    expect((await tool("mac", "memory_forget", { path: macs, context: "cron" })).text).toContain(
+      "Recusada (cron)",
+    );
+    expect((await v1("alan", "forget", { path: macs })).body).toEqual({ ok: true, path: macs });
     // A remoção na fila já tira a nota da leitura, e um segundo «esqueça» espera o commit.
     expect(await v1("mac", "read", { path: macs })).toEqual(NOT_FOUND);
     expect((await v1("mac", "forget", { path: macs })).body).toEqual({
@@ -633,10 +638,11 @@ describe("o recall e o núcleo (ADR-0001 §6)", () => {
     const headings = lines.flatMap((line, i) => (line.startsWith("## ") ? [i] : []));
     const notes = headings.filter((i) => lines[i]?.endsWith(`[${id}]`));
     expect(notes).toHaveLength(3);
+    // A linha de origem leva o id do bloco: o corpo de uma nota não a forja.
     expect(notes.map((i) => lines[i + 1]).sort()).toEqual([
-      "origem: alan, conclusão, pendente",
-      "origem: alan, conclusão, pendente",
-      "origem: dono",
+      `origem: alan, conclusão, pendente [${id}]`,
+      `origem: alan, conclusão, pendente [${id}]`,
+      `origem: dono [${id}]`,
     ]);
     for (const budget of [0, 40, 120, 300]) {
       expect((await recall(budget)).tokens).toBeLessThanOrEqual(budget);
@@ -652,7 +658,7 @@ describe("o recall e o núcleo (ADR-0001 §6)", () => {
     const core = (await v1("alan", "core", { budgetTokens: 1_000_000 })).body;
     expect(core.tokens).toBeGreaterThan(1_000);
     expect(core.tokens).toBeLessThanOrEqual(4_000);
-    expect(core.text).toContain("\norigem: dono\n");
+    expect(core.text).toMatch(/\norigem: dono \[[0-9a-f]{16}\]\n/);
     const small = (await v1("alan", "core")).body;
     expect(small).toEqual({ text: "", tokens: 0, paths: [], omitted: 1 });
     expect((await v1("alan", "core", { budgetTokens: 0 })).body.omitted).toBe(0);

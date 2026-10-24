@@ -133,6 +133,7 @@ export type ForgetNoteResult =
   | {
       ok: false;
       reason:
+        | "cron"
         | "not_found"
         | "changed"
         | "scope_not_allowed"

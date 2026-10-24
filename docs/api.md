@@ -82,7 +82,7 @@ As regras são as do [ADR-0001](adr/0001-identidade-e-confianca.md), com a emend
   - `agent` e `external` entram com `review: pending` e `level: inferred`;
   - só `owner` pelo provedor entra com `level: explicit`, sem pendência.
 - **Recusas:**
-  - uma rotina agendada (`context: cron`) não grava, nem arquiva;
+  - uma rotina agendada (`context: cron`) não grava, nem arquiva, nem esquece;
   - nenhum pedido traz `pinned`;
   - nenhuma gravação muda uma nota do núcleo ou uma arquivada;
   - uma nota que vale como do dono só muda pela palavra do dono: `source: owner`, pelo provedor, de um cliente com `ownerClaims`.
@@ -173,7 +173,7 @@ As memórias que respondem a pergunta, num bloco cercado dentro do orçamento: 1
 - **O bloco é dado, não instrução:**
   - as tags do bloco e o cabeçalho de cada nota levam um id aleatório;
   - `<memory` é escapado dentro das notas;
-  - cada nota diz a origem na linha logo abaixo do cabeçalho.
+  - cada nota diz a origem na linha logo abaixo do cabeçalho, que termina no mesmo id do bloco: o corpo de uma nota não forja essa linha.
 
 ```json
 { "text": "<memory-…>\n## Título (caminho) [id]\norigem: dono\n…\n</memory-…>", "tokens": 540, "paths": ["…"] }
@@ -273,8 +273,10 @@ Uma nota arquivada se lê pelo caminho. Uma nota que não existe, ou que o leito
 ### `/v1/forget`
 
 ```json
-{ "path": "memory/notes/do-alan.md" }
+{ "path": "memory/notes/do-alan.md", "context": "chat" }
 ```
+
+Esquecer é um commit: com `context: "cron"`, o pedido é recusado (`cron`), como uma gravação.
 
 ```json
 { "ok": true, "path": "memory/notes/do-alan.md" }

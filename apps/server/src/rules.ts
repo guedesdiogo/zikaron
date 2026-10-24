@@ -83,16 +83,17 @@ export function decideWrite(
     if (previous.inCore) return { ok: false, reason: "core_note" };
     if (previous.ownerGrade && !ownersWord) return { ok: false, reason: "owners_note" };
   }
-  const saidByOwner = source === "owner";
+  // Só a palavra do dono que vale como do dono entra direto. A de um cliente sem `ownerClaims`
+  // fica pendente e inferida, como uma conclusão, até o «sim» no cofre (Q3).
   return {
     ok: true,
-    level: saidByOwner ? "explicit" : "inferred",
+    level: ownersWord ? "explicit" : "inferred",
     origin: {
       client: client.name,
       channel: claim.channel,
       source,
       evidence: evidenceLine(claim.evidence),
-      review: saidByOwner ? null : "pending",
+      review: ownersWord ? null : "pending",
       taint: previous?.tainted ? "inherited" : null,
     },
   };
