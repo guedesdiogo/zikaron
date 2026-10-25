@@ -20,6 +20,13 @@ export interface Client {
 export type Clients = ReadonlyMap<string, Client>;
 
 /**
+ * O próprio servidor, como quem grava a rotina diária (#17): o arquivo das tarefas e o relatório.
+ * Nenhum cliente da configuração tem este nome, para o trailer `Zikaron-Client` e a fila nunca
+ * confundirem a rotina com um cliente.
+ */
+export const SERVER_CLIENT = "zikaron";
+
+/**
  * Lê `ZIKARON_CLIENTS`: um objeto JSON do Client ID de cada service token para o cliente. Recusa a
  * configuração inteira quando algo não vale, para um erro de digitação não abrir uma porta.
  */
@@ -59,6 +66,7 @@ export function parseClients(json: string | undefined): Clients {
       throw new Error("ZIKARON_CLIENTS has a client both exposed and privileged");
     }
     if (names.has(client.name)) throw new Error("ZIKARON_CLIENTS repeats a client name");
+    if (client.name === SERVER_CLIENT) throw new Error("ZIKARON_CLIENTS names the server itself");
     names.add(client.name);
     clients.set(id, client as Client);
   }

@@ -31,7 +31,9 @@ export {
   type LifecycleOptions,
   lifecycleFindings,
   lifecycleReport,
+  link as noteLink,
   type NoteRef,
+  pathCode,
   writtenAt,
 } from "./lifecycle.ts";
 export {
