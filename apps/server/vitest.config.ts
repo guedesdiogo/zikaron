@@ -5,9 +5,9 @@ export default defineConfig({
   plugins: [
     cloudflareTest({
       wrangler: { configPath: "./wrangler.jsonc" },
-      // Os testes trocam o backend do GitHub por um em memória; o segredo do webhook é de verdade.
-      // A identidade é sintética: um time e uma aplicação do Access de teste, e os clientes da
-      // configuração de partida do ADR-0001 §7, mais um cliente sem nenhuma das flags.
+      // Tests swap the GitHub backend for an in-memory one; the webhook secret is real.
+      // Identity is synthetic: a test Access team and application, and the clients of ADR-0001 §7's
+      // starting configuration, plus a client with none of the flags.
       miniflare: {
         bindings: {
           GITHUB_WEBHOOK_SECRET: "webhook-secret-for-tests",
@@ -44,9 +44,9 @@ export default defineConfig({
     }),
   ],
   test: {
-    // Devolve o backend falso e apaga os cofres depois de cada teste, em todo arquivo.
+    // Resets the fake backend and deletes the vaults after each test, in every file.
     setupFiles: ["./test/setup.ts"],
-    // A CI falha abaixo de 80% em qualquer destas métricas, em todo workspace.
+    // CI fails below 80% on any of these metrics, in every workspace.
     coverage: {
       provider: "istanbul",
       include: ["src/**/*.ts"],
@@ -54,8 +54,8 @@ export default defineConfig({
       reporter: ["text-summary", "json-summary"],
       thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 },
     },
-    // O primeiro teste de cada arquivo espera o workerd subir, o que leva segundos numa máquina
-    // ocupada. Estes prazos cobrem a subida, não testes lentos.
+    // The first test in each file waits for workerd to start, which takes seconds on a busy
+    // machine. These timeouts cover the startup, not slow tests.
     testTimeout: 20_000,
     hookTimeout: 30_000,
   },

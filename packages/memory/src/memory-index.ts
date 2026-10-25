@@ -684,7 +684,7 @@ export class MemoryIndex {
    * How far a path's current version is trusted under the clients' settings in `policy` (ADR-0001
    * §3 and §5), whoever reads: whether it counts as the owner's, and whether it is tainted. Null
    * when no note is at the path. The writer's rules read it before a new version (ADR-0001 §4).
-   * Com `commit`, a confiança daquela versão, atual ou não, como o recall a mostra.
+   * With `commit`, that version's trust, current or not, as recall shows it.
    */
   trust(
     path: string,
@@ -706,8 +706,9 @@ export class MemoryIndex {
   }
 
   /**
-   * As notas que esperam o «sim» do dono (`review: pending` na versão atual) que o leitor pode ver,
-   * as mais recentes primeiro. Arquivadas e fundidas em outra ficam de fora, como numa busca.
+   * The notes waiting for the owner's "yes" (`review: pending` in the current version) that the
+   * reader may see, most recent first. Archived notes, and notes merged into another, stay out, as
+   * in a search.
    */
   pending(options: { reader?: ReaderPolicy; limit?: number } = {}): SearchHit[] {
     const [filter, bindings] = versionFilter(
@@ -848,11 +849,11 @@ export class MemoryIndex {
     /** The frontmatter's `updated`, as written: Kelpie's last write, when it wrote the note. */
     updated: unknown;
     blobSha: string;
-    /** O `status` de uma `task` ou `delegation` (#6). */
+    /** The `status` of a `task` or `delegation` (#6). */
     status: Status | null;
-    /** O cliente do bloco `origin`, quando ele vale (ADR-0001 §3). */
+    /** The `origin` block's client, when the block is valid (ADR-0001 §3). */
     originClient: string | null;
-    /** A versão espera o «sim» do dono. */
+    /** The version waits for the owner's "yes". */
     pending: boolean;
   }[] {
     return this.#exec<{
@@ -900,12 +901,12 @@ export class MemoryIndex {
   }
 
   /**
-   * As versões que o servidor gravou como ditas pelo dono, pelo provedor, escritas desde `since`: o
-   * risco do `ownerClaims` (ADR-0001, Consequências), que o relatório diário mostra. Atuais ou não,
-   * arquivadas ou fundidas também, a última de cada cliente em cada caminho. Quando foi escrita é o
-   * `updated` dela, nunca depois do commit, como no `writtenAt`: um índice refeito não a faz nova.
-   * As versões de `except` (os blobs que o arquivo da rotina escreveu, levando o `origin` adiante)
-   * não são uma gravação nova do cliente.
+   * The versions the server wrote as said by the owner, through the provider, written since
+   * `since`: the `ownerClaims` risk (ADR-0001, Consequences), which the daily report shows. Current
+   * or not, archived or merged too, the latest from each client at each path. When it was written
+   * is its `updated`, never later than the commit, as in `writtenAt`: a rebuilt index doesn't make
+   * it new. The versions in `except` (the blobs the daily routine's archive wrote, carrying the
+   * `origin` forward) aren't a new write by the client.
    */
   ownerClaimsSince(
     since: number,

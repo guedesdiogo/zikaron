@@ -1,32 +1,32 @@
-// A regra de gravação (ADR-0001 §4), aplicada pelo servidor e não pela persona: o canal põe o teto
-// do que uma gravação diz ser, e a versão anterior decide se ela pode ser substituída. Funções
-// puras: quem grava passa a versão atual e a confiança dela, e recebe o `origin` e o `level`.
+// The write rule (ADR-0001 §4), applied by the server and not by the persona: the channel caps what
+// a write claims to be, and the previous version decides whether it can be replaced. Pure
+// functions: the writer passes the current version and its trust, and gets `origin` and `level`.
 import type { Channel, Level, Origin, Source } from "@zikaron/memory";
 import type { Client } from "./identity.ts";
 
-/** O que o pedido diz de uma gravação; o servidor limita cada campo pelo canal. */
+/** What the request says about a write; the server limits each field by the channel. */
 export interface WriteClaim {
   channel: Channel;
   source: Source;
-  /** O id da mensagem do dono, ou a referência da fonte; uma linha. */
+  /** The owner's message id, or the source's reference; one line. */
   evidence?: string;
-  /** `cron` quando quem grava é uma rotina agendada, que nunca grava (Q3). */
+  /** `cron` when the writer is a scheduled routine, which never writes (Q3). */
   context?: string;
-  /** Um agente nunca fixa uma nota: o `pinned` só vem do cofre. */
+  /** An agent never pins a note: `pinned` only comes from the vault. */
   pinned?: boolean;
 }
 
-/** A versão atual do caminho, quando a gravação a substitui. */
+/** The path's current version, when the write replaces it. */
 export interface Previous {
-  /** Do índice (`MemoryIndex.trust`), com a configuração atual dos clientes. */
+  /** From the index (`MemoryIndex.trust`), with the clients' current configuration. */
   ownerGrade: boolean;
   tainted: boolean;
   archived: boolean;
-  /** O núcleo a carrega: pinned no escopo global ou de um agente, ou em `profile/` (#168). */
+  /** The core loads it: pinned in the global scope or an agent's, or in `profile/` (#168). */
   inCore: boolean;
-  /** Ela espera o «sim» do dono. */
+  /** It waits for the owner's "yes". */
   pending: boolean;
-  /** O cliente que a gravou, quando foi o servidor. */
+  /** The client that wrote it, when the server did. */
   client: string | null;
 }
 
@@ -42,7 +42,7 @@ export type WriteDecision =
   | { ok: true; origin: Origin; level: Level }
   | { ok: false; reason: WriteRefusal };
 
-/** Uma linha de evidência: sem quebras, controles nem marcas bidirecionais, até 300 caracteres. */
+/** One line of evidence: no breaks, controls or bidirectional marks, up to 300 characters. */
 function evidenceLine(value: string | undefined): string | null {
   if (value === undefined) return null;
   const line = value
@@ -55,15 +55,15 @@ function evidenceLine(value: string | undefined): string | null {
 }
 
 /**
- * Decide o `origin` e o `level` de uma nova versão, ou a recusa:
- * - uma rotina agendada não grava, e nenhum agente fixa uma nota;
- * - pelo canal de ferramenta, nada é `owner` nem `explicit`;
- * - `agent` e `external` entram com `review: pending` e `level: inferred`, até o «sim»;
- * - para um cliente `privileged`, uma nota contaminada responde como inexistente;
- * - nenhuma gravação substitui uma nota arquivada ou do núcleo;
- * - uma nota que vale como do dono só é substituída pela palavra do dono, isto é, `source: owner`
- *   pelo provedor de um cliente com `ownerClaims` (o «corrija» do Q6, ADR-0003);
- * - por cima de uma versão contaminada, a nova herda a marca (`taint: inherited`).
+ * Decides the `origin` and `level` of a new version, or the refusal:
+ * - a scheduled routine doesn't write, and no agent pins a note;
+ * - through the tool channel, nothing is `owner` or `explicit`;
+ * - `agent` and `external` come in with `review: pending` and `level: inferred`, until the "yes";
+ * - for a `privileged` client, a tainted note answers as nonexistent;
+ * - no write replaces an archived note or a core note;
+ * - an owner-grade note is replaced only by the owner's word, that is, `source: owner` through
+ *   the provider of a client with `ownerClaims` (Q6's "correct it", ADR-0003);
+ * - over a tainted version, the new one inherits the mark (`taint: inherited`).
  */
 export function decideWrite(
   client: Client,
@@ -72,19 +72,19 @@ export function decideWrite(
 ): WriteDecision {
   if (claim.context === "cron") return { ok: false, reason: "cron" };
   if (claim.pinned === true) return { ok: false, reason: "pinned" };
-  // O teto é uma lista de permissão: só o provedor pode dizer que o dono disse.
+  // The ceiling is an allowlist: only the provider can say the owner said it.
   const source: Source =
     claim.channel !== "provider" && claim.source === "owner" ? "agent" : claim.source;
   const ownersWord = source === "owner" && claim.channel === "provider" && client.ownerClaims;
   if (previous !== null) {
-    // Para um cliente `privileged`, a nota contaminada não existe: nem para ler, nem para gravar.
+    // For a `privileged` client, the tainted note doesn't exist: not to read, not to write.
     if (client.privileged && previous.tainted) return { ok: false, reason: "not_found" };
     if (previous.archived) return { ok: false, reason: "archived" };
     if (previous.inCore) return { ok: false, reason: "core_note" };
     if (previous.ownerGrade && !ownersWord) return { ok: false, reason: "owners_note" };
   }
-  // Só a palavra do dono que vale como do dono entra direto. A de um cliente sem `ownerClaims`
-  // fica pendente e inferida, como uma conclusão, até o «sim» no cofre (Q3).
+  // Only the owner's word that counts as the owner's goes straight in. That of a client without
+  // `ownerClaims` stays pending and inferred, like a conclusion, until the "yes" in the vault (Q3).
   return {
     ok: true,
     level: ownersWord ? "explicit" : "inferred",
@@ -100,8 +100,8 @@ export function decideWrite(
 }
 
 /**
- * «Esqueça» vindo de um agente (ADR-0001 §4): só as notas que o próprio cliente gravou e as que
- * esperam o «sim». Uma nota do dono sai pelo cofre; tudo continua no git.
+ * "Forget" from an agent (ADR-0001 §4): only the notes the client itself wrote and the ones waiting
+ * for the "yes". An owner's note leaves through the vault; everything stays in git.
  */
 export function mayForget(client: Client, previous: Previous): boolean {
   if (previous.ownerGrade || previous.inCore) return false;

@@ -79,8 +79,8 @@ export function coreBlock(index: MemoryIndex, options: CoreOptions): Core {
   const notes = index
     .lifecycleNotes()
     .filter((note) => note.invalidAt === null || note.invalidAt > options.now);
-  // Só as notas que o leitor vê contam, também para a reserva do rodapé: as outras não existem
-  // para ele (ADR-0001 §5).
+  // Only the notes the reader sees count, for the footer's reserve too: the others don't exist for
+  // it (ADR-0001 §5).
   const paths = ([0, 1, 2] as const)
     .flatMap((group) =>
       notes.filter((note) => coreGroup(note, options.agentId) === group).map((note) => note.path),

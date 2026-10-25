@@ -386,20 +386,20 @@ export function bodyWithoutHeading(title: string, body: string): string {
 export interface PackOptions {
   budgetTokens: number;
   /**
-   * O leitor, cuja configuração dos clientes diz se uma versão vale como do dono na linha de
-   * proveniência de cada nota (ADR-0001 §6). Sem ele, nenhuma versão do servidor vale como do dono.
+   * The reader, whose client settings say whether a version counts as the owner's in each note's
+   * provenance line (ADR-0001 §6). Without it, no server version counts as the owner's.
    */
   reader?: ReaderPolicy;
 }
 
-/** Uma configuração sem `ownerClaims` nem clientes confiáveis: a leitura mais cética da origem. */
+/** Settings with no `ownerClaims` and no trusted clients: the most skeptical reading of origin. */
 export const UNCLAIMED: ReaderPolicy = { client: "", mode: "plain", trusted: [], ownerClaims: [] };
-/** A linha de proveniência cabe nisto: o nome do cliente tem 40 caracteres no máximo. */
+/** The provenance line fits in this: a client's name is 40 characters at most. */
 export const PROVENANCE_CHARS = 120;
 
 /**
- * A linha de proveniência de uma versão (ADR-0001 §6), já numa linha só e escapada. A confiança é
- * a do índice, com a configuração de `policy`.
+ * A version's provenance line (ADR-0001 §6), already on one line and escaped. The trust is the
+ * index's, under the settings in `policy`.
  */
 export function provenanceLine(
   index: MemoryIndex,
@@ -487,7 +487,7 @@ export function pack(index: MemoryIndex, hits: readonly SearchHit[], options: Pa
     if (version === null) continue;
     const title = oneLine(version.title, HEADING_TITLE_CHARS);
     const origin = provenanceLine(index, version, policy);
-    // A linha de origem leva o id do bloco, como o cabeçalho: o corpo de uma nota não a forja.
+    // The origin line carries the block's id, as the heading does: a note's body can't forge it.
     const head = `## ${title} (${oneLine(version.path, HEADING_PATH_CHARS)}) [${id}]\n${origin} [${id}]\n`;
     const body = inert(bodyWithoutHeading(version.title, version.body));
     const descriptor =

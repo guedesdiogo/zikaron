@@ -1,4 +1,4 @@
-// A regra de gravação (ADR-0001 §4 e ADR-0003).
+// The write rule (ADR-0001 §4 and ADR-0003).
 import { describe, expect, it } from "vitest";
 import type { Client } from "../src/identity.ts";
 import { decideWrite, mayForget, type Previous } from "../src/rules.ts";
@@ -16,7 +16,7 @@ const PLAIN: Previous = {
 };
 
 describe("decideWrite", () => {
-  it("o dono disse, pelo provedor: entra direto, explicit, com a evidência", () => {
+  it("the owner said it, through the provider: goes straight in, explicit, with the evidence", () => {
     expect(
       decideWrite(NOAH, { channel: "provider", source: "owner", evidence: "telegram:msg/1" }, null),
     ).toEqual({
@@ -33,7 +33,7 @@ describe("decideWrite", () => {
     });
   });
 
-  it("um canal que não é o provedor nunca diz que o dono disse", () => {
+  it("a channel that isn't the provider never says the owner said it", () => {
     const decision = decideWrite(
       NOAH,
       { channel: "mcp" as unknown as "tool", source: "owner" },
@@ -42,13 +42,13 @@ describe("decideWrite", () => {
     expect(decision).toMatchObject({ ok: true, level: "inferred", origin: { source: "agent" } });
   });
 
-  it("para um cliente privileged, a nota contaminada não existe", () => {
+  it("for a privileged client, the tainted note doesn't exist", () => {
     expect(
       decideWrite(ALAN, { channel: "tool", source: "agent" }, { ...PLAIN, tainted: true }),
     ).toEqual({ ok: false, reason: "not_found" });
   });
 
-  it("o «o dono disse» de um cliente sem ownerClaims fica pendente e inferido", () => {
+  it('an "owner said" from a client without ownerClaims stays pending and inferred', () => {
     expect(decideWrite(ALAN, { channel: "provider", source: "owner" }, null)).toMatchObject({
       ok: true,
       level: "inferred",
@@ -56,7 +56,7 @@ describe("decideWrite", () => {
     });
   });
 
-  it("pelo canal de ferramenta, nada é do dono nem explicit", () => {
+  it("through the tool channel, nothing is the owner's or explicit", () => {
     const decision = decideWrite(ALAN, { channel: "tool", source: "owner" }, null);
     expect(decision).toMatchObject({
       ok: true,
@@ -65,7 +65,7 @@ describe("decideWrite", () => {
     });
   });
 
-  it.each(["agent", "external"] as const)("%s entra pendente e inferido", (source) => {
+  it.each(["agent", "external"] as const)("%s goes in pending and inferred", (source) => {
     expect(decideWrite(NOAH, { channel: "provider", source }, null)).toMatchObject({
       ok: true,
       level: "inferred",
@@ -73,13 +73,13 @@ describe("decideWrite", () => {
     });
   });
 
-  it("uma rotina agendada não grava", () => {
+  it("a scheduled routine doesn't write", () => {
     expect(
       decideWrite(NOAH, { channel: "provider", source: "owner", context: "cron" }, null),
     ).toEqual({ ok: false, reason: "cron" });
   });
 
-  it("nenhum agente fixa uma nota", () => {
+  it("no agent pins a note", () => {
     expect(decideWrite(NOAH, { channel: "provider", source: "owner", pinned: true }, null)).toEqual(
       {
         ok: false,
@@ -88,7 +88,7 @@ describe("decideWrite", () => {
     );
   });
 
-  it("não substitui nota arquivada nem do núcleo, nem pela palavra do dono", () => {
+  it("doesn't replace an archived or core note, not even on the owner's word", () => {
     const owner = { channel: "provider", source: "owner" } as const;
     expect(decideWrite(NOAH, owner, { ...PLAIN, archived: true })).toEqual({
       ok: false,
@@ -100,7 +100,7 @@ describe("decideWrite", () => {
     });
   });
 
-  it("uma nota do dono só muda pela palavra do dono, de um cliente com ownerClaims", () => {
+  it("an owner's note only changes on the owner's word, from a client with ownerClaims", () => {
     const ownersNote = { ...PLAIN, ownerGrade: true, client: null };
     expect(decideWrite(NOAH, { channel: "provider", source: "owner" }, ownersNote)).toMatchObject({
       ok: true,
@@ -119,7 +119,7 @@ describe("decideWrite", () => {
     });
   });
 
-  it("por cima de uma versão contaminada, a nova herda a marca", () => {
+  it("over a tainted version, the new one inherits the mark", () => {
     const KELPIE: Client = {
       name: "kelpie",
       exposed: false,
@@ -135,7 +135,7 @@ describe("decideWrite", () => {
     });
   });
 
-  it("a evidência vira uma linha, sem controles, de até 300 caracteres", () => {
+  it("the evidence becomes one line, without control characters, of up to 300 characters", () => {
     const decision = decideWrite(
       NOAH,
       { channel: "provider", source: "owner", evidence: `a\nb\u202Ec ${"x".repeat(400)}` },
@@ -151,13 +151,13 @@ describe("decideWrite", () => {
 });
 
 describe("mayForget", () => {
-  it("um agente esquece as próprias e as pendentes", () => {
+  it("an agent forgets its own notes and the pending ones", () => {
     expect(mayForget(ALAN, PLAIN)).toBe(true);
     expect(mayForget(NOAH, { ...PLAIN, pending: true })).toBe(true);
     expect(mayForget(NOAH, PLAIN)).toBe(false);
   });
 
-  it("nunca uma nota do dono ou do núcleo", () => {
+  it("never an owner's note or a core note", () => {
     expect(mayForget(ALAN, { ...PLAIN, ownerGrade: true })).toBe(false);
     expect(mayForget(ALAN, { ...PLAIN, inCore: true })).toBe(false);
   });

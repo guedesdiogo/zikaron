@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Espera o /health responder com o ambiente e o commit recém-publicados (prumo AMB-03). Do exemplo
-# do prumo (forma do play-x9). No primeiro deploy de um Worker, o workers.dev pode levar alguns
-# minutos para responder: a espera padrão é de 5 min.
+# Waits for /health to answer with the environment and the commit just published (prumo AMB-03).
+# From the prumo example (the play-x9 shape). On a Worker's first deploy, workers.dev can take a
+# few minutes to answer: the default wait is 5 min.
 #
-# O repo é público, e o log do Actions também. Ao contrário do exemplo, o script nunca imprime o
-# endereço, o corpo de uma resposta que não confere nem o erro do curl, que trariam o subdomínio da
-# conta ou a página do Access: só o status HTTP e os três campos do /health.
+# The repo is public, and so is the Actions log. Unlike the example, the script never prints the
+# address, the body of a response that does not match or curl's error, which would carry the
+# account's subdomain or the Access page: only the HTTP status and the three /health fields.
 #
-#   .github/scripts/check-health.sh <url> <ambiente> <commit> [segundos]
+#   .github/scripts/check-health.sh <url> <environment> <commit> [seconds]
 set -euo pipefail
 
 url=$1
@@ -21,7 +21,7 @@ trap 'rm -f "$body"' EXIT
 
 while :; do
   : >"$body"
-  # Sem -S e com o stderr fora: a mensagem de erro do curl diz o host.
+  # Without -S and with stderr dropped: curl's error message names the host.
   code=$(curl -s -o "$body" -w '%{http_code}' --max-time 10 "$url" 2>/dev/null || true)
   got=$(jq -c '{status, environment, commit}' "$body" 2>/dev/null || true)
   if [ "$got" = "$expected" ]; then
@@ -32,6 +32,6 @@ while :; do
   sleep 5
 done
 
-# Uma linha só: o runner lê as linhas «::» do log como comandos.
-echo "Em $wait s, o /health não respondeu $expected. Última resposta: HTTP ${code:-000}${got:+, $got}." >&2
+# A single line: the runner reads «::» lines in the log as commands.
+echo "In $wait s, /health did not answer $expected. Last response: HTTP ${code:-000}${got:+, $got}." >&2
 exit 1

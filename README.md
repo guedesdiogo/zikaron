@@ -1,26 +1,26 @@
 # Zikaron
 
-> *Zikaron* (זִכָּרוֹן) é «memória, memorial» em hebraico. Em Malaquias 3:16, um *sefer zikaron*, um livro de memória, é escrito para guardar o que importa.
+> *Zikaron* (זִכָּרוֹן) is Hebrew for "memory, memorial". In Malachi 3:16, a *sefer zikaron*, a book of remembrance, is written to keep what matters.
 
-Um servidor de memória compartilhada para agentes, no Cloudflare, sobre um cofre Markdown no GitHub.
+A shared memory server for agents, on Cloudflare, over a Markdown vault on GitHub.
 
-- **O cofre é a verdade.** Markdown num repo privado, legível e editável no Obsidian ou em qualquer editor. Todo índice é derivado dele e se refaz a partir dele.
-- **Um escritor só.** Um Durable Object serializa toda gravação no cofre, venha de onde vier. Uma edição feita por fora chega pelo webhook de push e, num conflito, vale a do dono.
-- **Vários clientes, uma memória.** Agentes do Hermes, o Claude Code e outros clientes MCP leem e gravam pelo mesmo servidor, cada um com a sua credencial.
-- **O servidor aplica as regras, não a persona.** Quem gravou, de onde veio e quem pode ler são decididos no servidor ([ADR-0001](docs/adr/0001-identidade-e-confianca.md)). O que vem de fora nunca fala pelo dono.
+- **The vault is the truth.** Markdown in a private repo, readable and editable in Obsidian or any editor. Every index derives from it and is rebuilt from it.
+- **A single writer.** A Durable Object serializes every write to the vault, wherever it comes from. An edit made outside arrives through the push webhook and, in a conflict, the owner's wins.
+- **Many clients, one memory.** Hermes agents, Claude Code and other MCP clients read and write through the same server, each with its own credential.
+- **The server enforces the rules, not the persona.** Who wrote a note, where it came from and who may read it are decided on the server ([ADR-0001](docs/adr/0001-identidade-e-confianca.md)). What comes from outside never speaks for the owner.
 
-## Estado
+## Status
 
-Em construção: o plano da v1 é o [Epic 1](https://github.com/guedesdiogo/zikaron/issues/1).
+Under construction: the v1 plan is [Epic 1](https://github.com/guedesdiogo/zikaron/issues/1).
 
-## De onde veio
+## Where it came from
 
-O formato, o índice, a busca e o escritor único vêm do [Kelpie](https://github.com/guedesdiogo/kelpie), que por sua vez segue o desenho do [ai-memory](https://github.com/akitaonrails/ai-memory). O [ADR-0002](docs/adr/0002-extracao-do-kelpie.md) diz o que veio e o que ficou.
+The format, the index, the search and the single writer come from [Kelpie](https://github.com/guedesdiogo/kelpie), which in turn follows the design of [ai-memory](https://github.com/akitaonrails/ai-memory). [ADR-0002](docs/adr/0002-extracao-do-kelpie.md) says what came over and what stayed behind.
 
-## Dados pessoais
+## Personal data
 
-O cofre pode guardar dados de terceiros, para uso pessoal. Apagar um dado de verdade é reescrever o histórico do git do cofre, à mão, e depois refazer o índice; o servidor nunca faz isso sozinho. A responsabilidade é de quem roda o servidor.
+The vault may hold third-party data, for personal use. Truly deleting a piece of data means rewriting the vault's git history by hand and then rebuilding the index; the server never does that on its own. The responsibility lies with whoever runs the server.
 
-## Licença
+## License
 
-MIT. Os arquivos traduzidos do ai-memory levam o aviso MIT dele (© 2026 Fabio Akita).
+MIT. The files translated from ai-memory carry its MIT notice (© 2026 Fabio Akita).

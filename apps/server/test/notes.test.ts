@@ -1,5 +1,5 @@
-// O escritor de notas: o que uma nova versão leva da anterior (#6, e o que o Kelpie leva), e o que o
-// cofre confere de um pedido que chega pelo RPC.
+// The note writer: what a new version carries over from the previous one (#6, and what Kelpie
+// carries), and what the vault checks of a request that arrives over RPC.
 import { beforeEach, describe, expect, it } from "vitest";
 import { flush, tool, useAccess, v1, vaultStub, vaultWith } from "./access.ts";
 
@@ -7,8 +7,8 @@ beforeEach(async () => {
   await useAccess();
 });
 
-describe("uma nova versão", () => {
-  it("leva o que a anterior tinha e a memória deixou de fora", async () => {
+describe("a new version", () => {
+  it("carries over what the previous one had and the memory left out", async () => {
     const path = "areas/casa/tasks/presente-da-ana.md";
     const backend = vaultWith({
       [path]: [
@@ -67,9 +67,9 @@ describe("uma nova versão", () => {
     ]) {
       expect(file, kept).toContain(kept);
     }
-    // A página de uma task diz o status dela, e a origem.
+    // A task's page states its status, and the origin.
     const page = (await v1("alan", "read", { path })).body;
-    expect(page.text).toContain(" · pinned · status open · origem: dono · ");
+    expect(page.text).toContain(" · pinned · status open · origin: owner · ");
     const done = await v1("noah", "write", {
       source: "owner",
       path,
@@ -91,7 +91,7 @@ describe("uma nova versão", () => {
     expect(after).toContain("confidence: 0.9");
   });
 
-  it("arquiva um documento com o link dele, que a página mostra", async () => {
+  it("archives a document with its link, which the page shows", async () => {
     const backend = vaultWith();
     const written = await tool("alan", "memory_write", {
       source: "agent",
@@ -117,10 +117,10 @@ describe("uma nova versão", () => {
   });
 });
 
-describe("o que chega pelo RPC", () => {
+describe("what arrives over RPC", () => {
   const memory = { title: "A", body: "B", kind: "note" };
 
-  it("recusa um claim ou uma memória que não valem, sem ler nem gravar", async () => {
+  it("refuses an invalid claim or memory, without reading or writing", async () => {
     const backend = vaultWith();
     const stub = vaultStub();
     for (const [claim, problem] of [
@@ -165,7 +165,7 @@ describe("o que chega pelo RPC", () => {
     expect(backend.commitRequests).toHaveLength(0);
   });
 
-  it("um orçamento nulo é o padrão, e um caminho que o escopo não aceita é recusado", async () => {
+  it("a null budget is the default, and a path the scope doesn't accept is refused", async () => {
     vaultWith();
     expect((await v1("alan", "core", { budgetTokens: null })).status).toBe(200);
     expect(

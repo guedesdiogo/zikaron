@@ -22,7 +22,7 @@ vault.alarm = async function (this: Vault, ...info: unknown[]) {
 
 afterEach(async () => {
   replaceBackendForTesting(undefined);
-  // As chaves do Access ficam em cache pelo domínio do time: cada arquivo gera as suas.
+  // Access keys are cached by team domain: each file generates its own.
   replaceKeyFetcherForTesting(undefined);
   clearKeyCache();
   // A test's vaults go, alarms and all: one left with an alarm wakes in a later test, where it

@@ -1,25 +1,25 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  // O nível de cima é só local (testes e `wrangler dev`): os Workers publicados são os do `env`.
-  // Um deploy ou um `secret put` sem `--env` vai para um Worker à parte, nunca para a produção.
+  // The top level is local only (tests and `wrangler dev`): the published Workers are under `env`.
+  // A deploy or a `secret put` without `--env` goes to a separate Worker, never to production.
   "name": "zikaron-local",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },
-  // O nível de cima é o dos testes e do desenvolvimento local, fora do workers.dev. A CI publica
-  // sempre com `--env` (staging ou producao), nunca este.
+  // The top level is for tests and local development, off workers.dev. CI always publishes with
+  // `--env` (staging or producao), never this one.
   "workers_dev": false,
   "preview_urls": false,
-  // O GitHub App e o repositório do cofre são de um deploy, e entram como `--var` no deploy.
-  // Enquanto algum estiver vazio, ou faltar um segredo, o cofre fica desligado. Os segredos são
-  // GITHUB_APP_PRIVATE_KEY (a chave do App, em PKCS#8) e GITHUB_WEBHOOK_SECRET.
-  // A identidade (ADR-0001 §1) também é de um deploy, e entra como `--var`: ACCESS_TEAM_DOMAIN é o
-  // domínio do time no Access (`https://<time>.cloudflareaccess.com`), ACCESS_AUD o AUD da aplicação,
-  // e ZIKARON_CLIENTS o JSON do Client ID de cada service token para o cliente (`name`, `exposed`,
-  // `privileged`, `ownerClaims`). Vazios, ninguém entra: as rotas fora do webhook e do /health
-  // respondem 401, ou 500 sem a configuração dos clientes.
-  // ZIKARON_ENV e ZIKARON_COMMIT são o ambiente e o commit publicados, que o /health devolve; o
-  // deploy (.github/workflows/deploy.yml) também os passa como `--var`.
+  // The GitHub App and the vault's repository belong to a deploy, and come in as `--var` at deploy.
+  // While any of them is empty, or a secret is missing, the vault stays off. The secrets are
+  // GITHUB_APP_PRIVATE_KEY (the App's key, in PKCS#8) and GITHUB_WEBHOOK_SECRET.
+  // Identity (ADR-0001 §1) also belongs to a deploy, and comes in as `--var`: ACCESS_TEAM_DOMAIN is
+  // the team's Access domain (`https://<team>.cloudflareaccess.com`), ACCESS_AUD the application's
+  // AUD, and ZIKARON_CLIENTS the JSON from each service token's Client ID to the client (`name`,
+  // `exposed`, `privileged`, `ownerClaims`). Empty, nobody gets in: routes other than the webhook
+  // and /health answer 401, or 500 without the clients' configuration.
+  // ZIKARON_ENV and ZIKARON_COMMIT are the published environment and commit, which /health returns;
+  // the deploy (.github/workflows/deploy.yml) also passes them as `--var`.
   "vars": {
     "GITHUB_APP_ID": "",
     "GITHUB_INSTALLATION_ID": "",
@@ -35,10 +35,11 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Vault"] }],
   "env": {
-    // O staging (Story 1.8): a CI publica a cada merge na main, contra o cofre de teste. Fica no
-    // workers.dev, com o Cloudflare Access na frente (ligado no painel) e o webhook do GitHub e o
-    // /health em caminhos de bypass. Bindings e vars não são herdados entre ambientes: vão
-    // repetidos aqui, e os valores entram como `--var` no deploy (.github/workflows/deploy.yml).
+    // Staging (Story 1.8): CI publishes on every merge to main, against the test vault. It lives on
+    // workers.dev, with Cloudflare Access in front (turned on in the dashboard) and the GitHub
+    // webhook and /health on bypass paths. Bindings and vars aren't inherited between environments:
+    // they are repeated here, and the values come in as `--var` at deploy
+    // (.github/workflows/deploy.yml).
     "staging": {
       "name": "zikaron-staging",
       "workers_dev": true,
@@ -57,9 +58,9 @@
         "bindings": [{ "name": "VAULT", "class_name": "Vault" }]
       }
     },
-    // A produção (Story 1.9): só por release, por ordem do dono (.github/workflows/producao.yml),
-    // contra o cofre de verdade (docs/producao.md). Como o staging: workers.dev, o Access na
-    // frente, o webhook e o /health em bypass, e os valores como `--var` no deploy.
+    // Production (Story 1.9): release only, on the owner's order (.github/workflows/producao.yml),
+    // against the real vault (docs/production.md). Like staging: workers.dev, Access in front, the
+    // webhook and /health on bypass, and the values as `--var` at deploy.
     "producao": {
       "name": "zikaron",
       "workers_dev": true,

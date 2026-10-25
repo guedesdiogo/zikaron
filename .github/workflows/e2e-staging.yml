@@ -1,8 +1,8 @@
 name: E2E staging
 
-# O roteiro ponta a ponta do staging (Story 1.8), à mão, contra o cofre de teste. As credenciais
-# são de clientes de teste e ficam como segredos no environment `staging`, que só aceita a main:
-# o log é público, e só os segredos saem mascarados.
+# The staging end-to-end run (Story 1.8), by hand, against the test vault. The credentials belong
+# to test clients and live as secrets in the `staging` environment, which only accepts main: the
+# log is public, and only the secrets come out masked.
 on:
   workflow_dispatch:
 
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   e2e:
-    name: Roteiro ponta a ponta
+    name: End-to-end run
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 15

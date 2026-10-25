@@ -1,5 +1,5 @@
-// A rotina diária do cofre (#17): o arquivo das tarefas encerradas e o relatório da memória, com
-// dados sintéticos. Cada teste roda os alarmes à mão; «um dia depois» é zerar o `lifecycle_after`.
+// The vault's daily routine (#17): archiving closed tasks and the memory report, with synthetic
+// data. Each test runs the alarms by hand; "a day later" means zeroing `lifecycle_after`.
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { LIFECYCLE_REPORT_PATH } from "@zikaron/memory";
@@ -24,7 +24,7 @@ async function rows(stub: Stub, sql: string, ...bindings: unknown[]) {
   );
 }
 
-/** A próxima rotina fica para depois (`later`) ou vence agora, como um dia depois. */
+/** The next routine is put off (`later`) or is due now, as a day later. */
 async function dueIn(stub: Stub, later: boolean) {
   await runInDurableObject(stub, (_instance, state) => {
     state.storage.sql.exec(
@@ -34,7 +34,7 @@ async function dueIn(stub: Stub, later: boolean) {
   });
 }
 
-/** Dois alarmes: o que roda a rotina e põe na fila, e o que comita. */
+/** Two alarms: the one that runs the routine and queues, and the one that commits. */
 async function twice(stub: Stub) {
   await runDurableObjectAlarm(stub);
   await runDurableObjectAlarm(stub);
@@ -62,12 +62,12 @@ async function written(
   return result.path;
 }
 
-/** O arquivo sem o `updated` nem o `archived`: o que o arquivo deve levar adiante. */
+/** The file without `updated` or `archived`: what archiving must carry over. */
 const carried = (text: string) =>
   text.replace(/^updated: .*\n/m, "").replace(/^archived: true\n/m, "");
 
-describe("o arquivo das tarefas", () => {
-  it("arquiva a concluída e a de 90 dias, com tudo o mais e a origem como estava", async () => {
+describe("the task archive", () => {
+  it("archives the done task and the one past 90 days, with everything else and the origin as it was", async () => {
     const backend = vaultWith();
     const stub = vault("ciclo-arquiva");
     await dueIn(stub, true);
@@ -101,7 +101,7 @@ describe("o arquivo das tarefas", () => {
     });
     await runDurableObjectAlarm(stub);
     const before = backend.files();
-    // Sem data, a tarefa vale pelo dia em que foi escrita, nunca depois do commit.
+    // Without a date, the task counts from the day it was written, never after the commit.
     await rows(
       stub,
       "UPDATE versions SET recorded_at = ? WHERE path = ? AND is_current = 1",
@@ -117,7 +117,7 @@ describe("o arquivo das tarefas", () => {
       expect(carried(after[path] ?? ""), path).toBe(carried(before[path] ?? ""));
     }
     expect(after[fresh]).toBe(before[fresh]);
-    // A origem é a da nota: a do Noah, de fora, pendente; nada se apagou.
+    // The origin is the note's: Noah's, from outside, pending; nothing was deleted.
     expect(after[done]).toContain(
       "origin:\n  client: noah\n  channel: tool\n  source: external\n  evidence: gmail:msg/1\n  review: pending\n",
     );
@@ -126,47 +126,47 @@ describe("o arquivo das tarefas", () => {
     );
     expect(backend.commitRequests.flatMap((request) => request.deletions)).toEqual([]);
     const archive = backend.commitRequests.at(-1);
-    expect(archive?.headline).toBe("Arquiva tarefas encerradas");
+    expect(archive?.headline).toBe("Archive closed tasks");
     expect(archive?.body).toBe("Zikaron-Client: zikaron");
     expect(archive?.writes.map((write) => write.path).sort()).toEqual(
       [done, old, undated, LIFECYCLE_REPORT_PATH].sort(),
     );
 
-    // A confiança não muda: o Alan continua sem ver a nota de fora; o Noah a vê como era.
+    // Trust doesn't change: Alan still can't see the outside note; Noah sees it as it was.
     expect(await stub.readNote("alan", done)).toEqual({ ok: false, reason: "not_found" });
     const page = await stub.readNote("noah", done);
-    expect(page.ok && page.text).toContain("origem: noah, de fora, pendente");
+    expect(page.ok && page.text).toContain("origin: noah, from outside, pending");
     expect(page.ok && page.text).toContain(" · archived · ");
-    // Fora da busca, legível pelo caminho.
+    // Out of search, readable by path.
     const found = await stub.search("noah", "conta de luz", { k: 10 });
     expect(found.ok && found.notes.map((note) => note.path)).not.toContain(done);
 
     const page2 = report(backend);
-    expect(page2).toContain("## Tarefas arquivadas");
+    expect(page2).toContain("## Archived tasks");
     for (const path of [done, old, undated]) {
       expect(page2).toContain(`[[${path.slice(0, -3)}|`);
     }
-    // Arquivadas, já não esperam o «sim» no relatório; a que ficou, sim.
+    // Once archived, they no longer wait for the "yes" in the report; the one left still does.
     const waiting = page2.slice(
-      page2.indexOf("## Esperam o «sim»"),
-      page2.indexOf("## Tarefas arquivadas"),
+      page2.indexOf('## Waiting for the "yes"'),
+      page2.indexOf("## Archived tasks"),
     );
     expect(waiting).toContain(fresh.slice(0, -3));
     for (const path of [done, old, undated]) expect(waiting).not.toContain(path.slice(0, -3));
 
-    // No dia seguinte, com o arquivo comitado, os mesmos achados: nenhum commit.
+    // The next day, with the archive committed, the same findings: no commit.
     const commits = backend.commitRequests.length;
     await dueIn(stub, false);
     await twice(stub);
     expect(backend.commitRequests).toHaveLength(commits);
   });
 
-  it("não muda a tarefa do dono, nem a dita pelo dono, nem a que o núcleo carrega", async () => {
+  it("doesn't change the owner's task, nor one said by the owner, nor one the core carries", async () => {
     const owners = "memory/tasks/renovar-o-passaporte.md";
     const edited = "memory/tasks/consertar-a-pia.md";
     const backend = vaultWith({
       [owners]: "---\nstatus: done\n---\n\n# Renovar o passaporte\n\nFeito em outubro.\n",
-      // O dono editou uma tarefa pendente e não tirou o `review`: continua dele.
+      // The owner edited a pending task and didn't remove the `review`: it's still the owner's.
       [edited]:
         "---\nstatus: done\norigin:\n  client: noah\n  channel: tool\n  source: agent\n  review: pending\n---\n\n# Consertar a pia\n\nO encanador veio.\n",
     });
@@ -206,14 +206,14 @@ describe("o arquivo das tarefas", () => {
     for (const path of [owners, edited, claimed, pinned, profile]) {
       expect(after[path], path).toBe(before[path]);
     }
-    // Só o relatório foi escrito, com o seu resumo.
+    // Only the report was written, with its summary.
     expect(backend.commitRequests.slice(commits).map((request) => request.headline)).toEqual([
-      "Atualiza o relatório da memória",
+      "Update the memory report",
     ]);
     const page = report(backend);
-    expect(page).toContain("## Tarefas do dono para arquivar");
+    expect(page).toContain("## The owner's tasks to archive");
     const listed = page
-      .slice(page.indexOf("## Tarefas do dono para arquivar"))
+      .slice(page.indexOf("## The owner's tasks to archive"))
       .split("\n\n")[2]
       ?.trim();
     expect(listed).toBe(
@@ -223,14 +223,14 @@ describe("o arquivo das tarefas", () => {
         `- [[${owners.slice(0, -3)}|Renovar o passaporte]]`,
       ].join("\n"),
     );
-    expect(page).not.toContain("## Tarefas arquivadas");
+    expect(page).not.toContain("## Archived tasks");
   });
 
-  it("o arquivo de uma tarefa «dita pelo dono» não conta como gravação nova do cliente", async () => {
+  it('archiving a task "said by the owner" doesn\'t count as a new write by the client', async () => {
     const backend = vaultWith();
     const stub = vault("ciclo-arquivo-nao-e-claim");
     await dueIn(stub, true);
-    // O Alan não tem `ownerClaims`: a tarefa não vale como do dono, e a rotina a arquiva.
+    // Alan has no `ownerClaims`: the task isn't owner-grade, and the routine archives it.
     const done = await written(stub, "alan", PROVIDER_OWNER, {
       title: "Enviar o relatório do condomínio",
       body: "Enviar até sexta.",
@@ -238,7 +238,7 @@ describe("o arquivo das tarefas", () => {
       status: "done",
     });
     await runDurableObjectAlarm(stub);
-    // A gravação do Alan é de mais de uma semana atrás.
+    // Alan's write is from more than a week ago.
     await rows(
       stub,
       "UPDATE versions SET recorded_at = ? WHERE path = ? AND is_current = 1",
@@ -251,16 +251,16 @@ describe("o arquivo das tarefas", () => {
     expect(backend.files()[done]).toContain(
       "origin:\n  client: alan\n  channel: provider\n  source: owner\n",
     );
-    // E no dia seguinte, com o arquivo já no índice, o relatório continua o mesmo.
+    // And the next day, with the archive already in the index, the report stays the same.
     const page = report(backend);
     await dueIn(stub, false);
     await twice(stub);
     expect(report(backend)).toBe(page);
-    expect(page).toContain("## Tarefas arquivadas");
-    expect(page).not.toContain("## Ditas pelo dono, pelo provedor");
+    expect(page).toContain("## Archived tasks");
+    expect(page).not.toContain("## Said by the owner, through the provider");
   });
 
-  it("uma nota que não se regrava fica como está, e as outras seguem", async () => {
+  it("a note that can't be rewritten stays as it is, and the others go on", async () => {
     const backend = vaultWith();
     const stub = vault("ciclo-falha-nota");
     await dueIn(stub, true);
@@ -296,7 +296,7 @@ describe("o arquivo das tarefas", () => {
     logged.mockRestore();
   });
 
-  it("a edição do dono enquanto o arquivo espera na fila ganha inteira, sem conflito", async () => {
+  it("the owner's edit while the archive waits in the queue wins whole, with no conflict", async () => {
     const backend = vaultWith();
     const stub = vault("ciclo-corrida");
     await dueIn(stub, true);
@@ -320,8 +320,8 @@ describe("o arquivo das tarefas", () => {
   });
 });
 
-describe("o arquivo das tarefas: o que a revisão do PR #18 pediu", () => {
-  it("uma tarefa cuja versão é um merge com a edição do dono não é arquivada", async () => {
+describe("the task archive: what the PR #18 review asked for", () => {
+  it("a task whose version is a merge with the owner's edit isn't archived", async () => {
     const backend = vaultWith();
     const stub = vault("ciclo-merge-dono");
     await dueIn(stub, true);
@@ -333,7 +333,7 @@ describe("o arquivo das tarefas: o que a revisão do PR #18 pediu", () => {
     });
     await runDurableObjectAlarm(stub);
     const version = ((await stub.readNote("kelpie", path, {})) as { version: string }).version;
-    // O Kelpie encerra a tarefa enquanto o dono, no Obsidian, acrescenta uma linha no fim.
+    // Kelpie closes the task while the owner, in Obsidian, adds a line at the end.
     const closed = await stub.writeNote("kelpie", TOOL_AGENT, {
       title: "Trocar o filtro",
       body: "Trocar o filtro da água.\n\nComprar o filtro novo.",
@@ -354,10 +354,10 @@ describe("o arquivo das tarefas: o que a revisão do PR #18 pediu", () => {
     await twice(stub);
     expect(backend.files()[path]).toBe(merged);
     expect(await rows(stub, "SELECT count(*) AS n FROM archived_tasks")).toEqual([{ n: 0 }]);
-    expect(report(backend)).toContain("Tarefas do dono para arquivar");
+    expect(report(backend)).toContain("The owner's tasks to archive");
   });
 
-  it("o arquivo leva o level adiante, também o explicit de quem perdeu o ownerClaims", async () => {
+  it("archiving carries the level over, also the explicit one of a client that lost ownerClaims", async () => {
     const backend = vaultWith();
     const stub = vault("ciclo-level");
     await dueIn(stub, true);
@@ -399,8 +399,8 @@ describe("o arquivo das tarefas: o que a revisão do PR #18 pediu", () => {
   });
 });
 
-describe("o relatório", () => {
-  it("lista o que o plano diz, só com links, e nada de nota nos logs", async () => {
+describe("the report", () => {
+  it("lists what the plan says, only with links, and nothing from a note in the logs", async () => {
     const ana = "memory/people/ana.md";
     const velho = "memory/notes/velho.md";
     const proprio = "memory/notes/proprio.md";
@@ -410,7 +410,7 @@ describe("o relatório", () => {
       "memory/notes/receita.md": "# Receita de bolo\n\nTrês ovos.\n",
       "knowledge/cozinha/receita.md": "# Receita de bolo\n\nTrês ovos.\n",
       "memory/sessions/2020/2020-01-05-conversa.md": "# Conversa antiga\n\nSobre o bolo.\n",
-      // A edição do dono no próprio relatório não é uma nota do dono mudada.
+      // The owner's edit to the report itself isn't a changed owner's note.
       [LIFECYCLE_REPORT_PATH]: "# Relatório\n\nEditado à mão.\n",
     });
     const stub = vault("ciclo-relatorio");
@@ -418,7 +418,7 @@ describe("o relatório", () => {
     const logs = (["log", "warn", "error"] as const).map((level) => vi.spyOn(console, level));
     await stub.write("kelpie", [{ path: proprio, content: "# Próprio\n\nUm.\n" }], "x");
     await runDurableObjectAlarm(stub);
-    // O «corrija» pela conversa (ADR-0003): o Noah troca a nota do dono.
+    // The "fix it" through the conversation (ADR-0003): Noah replaces the owner's note.
     const version = (await stub.readNote("noah", ana)) as { version: string };
     await written(stub, "noah", PROVIDER_OWNER, {
       path: ana,
@@ -442,10 +442,10 @@ describe("o relatório", () => {
       body: "Ela pediu chá duas vezes.",
       kind: "preference",
     });
-    // Uma remoção de uma nota do dono, e uma nova versão de uma nota do próprio servidor.
+    // A removal of an owner's note, and a new version of a note by the server itself.
     await stub.write("kelpie", [{ path: velho, content: null }], "x");
     await stub.write("kelpie", [{ path: proprio, content: "# Próprio\n\nDois.\n" }], "x");
-    // Uma mudança de mais de uma semana sai do relatório e da tabela.
+    // A change from more than a week ago leaves the report and the table.
     await rows(
       stub,
       "INSERT INTO owner_changes (path, at, removed, client) VALUES ('memory/notes/antiga.md', 1, 0, 'noah')",
@@ -455,28 +455,28 @@ describe("o relatório", () => {
 
     const page = report(backend);
     const today = new Date().toISOString().slice(0, 10);
-    expect(page).toContain("# Relatório da memória");
+    expect(page).toContain("# Memory report");
     expect(page).toContain(
-      `## Notas do dono que um cliente mudou\n\nNotas que valiam como do dono e que a gravação de um cliente substituiu ou removeu na última semana. As mais recentes primeiro, com o último dia e quem mudou. O git guarda cada versão anterior.\n\n`,
+      `## The owner's notes a client changed\n\nNotes that counted as the owner's and that a client's write replaced or removed in the last week. Newest first, with the last day and who changed them. Git keeps every previous version.\n\n`,
     );
-    expect(page).toContain(`- [[memory/people/ana|Ana]]: mudada por noah em ${today}`);
-    expect(page).toContain(`- \`${velho}\`: removida por kelpie em ${today}`);
+    expect(page).toContain(`- [[memory/people/ana|Ana]]: changed by noah on ${today}`);
+    expect(page).toContain(`- \`${velho}\`: removed by kelpie on ${today}`);
     expect(page).not.toContain("notes/antiga");
     expect(page).not.toContain(proprio.slice(0, -3));
     expect(page).toContain(
-      `## Ditas pelo dono, pelo provedor\n\nO que cada cliente gravou na última semana como dito pelo dono, pelo provedor, com o dia. A evidência fica na nota. Desligar o \`ownerClaims\` de um cliente vale na hora.\n\n### noah\n\n- [[memory/people/ana|Ana]]: ${today}\n- [[${cafe.slice(0, -3)}|Café sem açúcar]]: ${today}`,
+      `## Said by the owner, through the provider\n\nWhat each client wrote in the last week as said by the owner, through the provider, with the day. The evidence stays in the note. Turning off a client's \`ownerClaims\` takes effect at once.\n\n### noah\n\n- [[memory/people/ana|Ana]]: ${today}\n- [[${cafe.slice(0, -3)}|Café sem açúcar]]: ${today}`,
     );
-    // A evidência, texto livre, nunca entra.
+    // The evidence, free text, never goes in.
     expect(page).not.toContain("telegram:msg/7");
     expect(page).not.toContain("gmail:msg/1");
     expect(page).toContain(
       `### alan\n\n- [[${conclusao.slice(0, -3)}|A Ana prefere chá]]\n\n### noah\n\n- [[${recado.slice(0, -3)}|Recado da Ana]]`,
     );
     expect(page).toContain(
-      "## Notas frias\n\nNotas episódicas, como sessões, eventos e tarefas, que o tempo esfriou. Ficam onde estão.\n\n- [[memory/sessions/2020/2020-01-05-conversa|Conversa antiga]]: escrita em 2020-01-05",
+      "## Cold notes\n\nEpisodic notes, such as sessions, events and tasks, that time has cooled. They stay where they are.\n\n- [[memory/sessions/2020/2020-01-05-conversa|Conversa antiga]]: written on 2020-01-05",
     );
     expect(page).toContain(
-      "## Duplicadas\n\n- O mesmo conteúdo: [[knowledge/cozinha/receita|Receita de bolo]], [[memory/notes/receita|Receita de bolo]]",
+      "## Duplicates\n\n- Same content: [[knowledge/cozinha/receita|Receita de bolo]], [[memory/notes/receita|Receita de bolo]]",
     );
     expect(
       await rows(stub, "SELECT path, removed, client FROM owner_changes ORDER BY path"),
@@ -484,13 +484,13 @@ describe("o relatório", () => {
       { path: velho, removed: 1, client: "kelpie" },
       { path: ana, removed: 0, client: "noah" },
     ]);
-    // O relatório não é memória: nenhuma leitura o alcança.
+    // The report isn't memory: no read reaches it.
     expect(await stub.readNote("noah", LIFECYCLE_REPORT_PATH)).toEqual({
       ok: false,
       reason: "not_found",
     });
 
-    // Os logs só têm contagens e códigos.
+    // The logs only have counts and codes.
     const lines = JSON.stringify(logs.flatMap((spy) => spy.mock.calls));
     for (const secret of ["Ana", "ana.md", "Café", "Recado", "Velho", "velho", "receita", "bolo"]) {
       expect(lines).not.toContain(secret);
@@ -498,7 +498,7 @@ describe("o relatório", () => {
     for (const spy of logs) spy.mockRestore();
   });
 
-  it("os mesmos achados dão a mesma página, sem commit, e a página sai sem achados", async () => {
+  it("the same findings give the same page, with no commit, and the page goes away without findings", async () => {
     const backend = vaultWith({
       "memory/notes/receita.md": "# Receita de bolo\n\nTrês ovos.\n",
       "knowledge/cozinha/receita.md": "# Receita de bolo\n\nTrês ovos.\n",
@@ -507,11 +507,11 @@ describe("o relatório", () => {
     await stub.read("README.md");
     await twice(stub);
     const page = report(backend);
-    expect(page).toContain("## Duplicadas");
-    expect(backend.commitRequests.at(-1)?.headline).toBe("Atualiza o relatório da memória");
+    expect(page).toContain("## Duplicates");
+    expect(backend.commitRequests.at(-1)?.headline).toBe("Update the memory report");
     const commits = backend.commitRequests.length;
 
-    // No mesmo dia, a rotina não roda de novo; um dia depois, os mesmos achados não mudam nada.
+    // The same day, the routine doesn't run again; a day later, the same findings change nothing.
     await twice(stub);
     await dueIn(stub, false);
     await twice(stub);
@@ -520,7 +520,7 @@ describe("o relatório", () => {
 
     backend.push({ "knowledge/cozinha/receita.md": null });
     await twice(stub);
-    // Ainda não é o dia seguinte: a página fica.
+    // It isn't the next day yet: the page stays.
     expect(backend.files()).toHaveProperty(LIFECYCLE_REPORT_PATH);
     await dueIn(stub, false);
     await twice(stub);
@@ -528,7 +528,7 @@ describe("o relatório", () => {
     expect(backend.commitRequests.at(-1)?.deletions).toEqual([LIFECYCLE_REPORT_PATH]);
   });
 
-  it("roda no máximo uma vez por dia", async () => {
+  it("runs at most once a day", async () => {
     const backend = vaultWith();
     const stub = vault("ciclo-uma-vez");
     await stub.read("README.md");
@@ -555,8 +555,8 @@ describe("o relatório", () => {
   });
 });
 
-describe("a rotina falha sozinha", () => {
-  it("uma falha deixa só o nome do erro no log, espera o dia seguinte e não segura as gravações", async () => {
+describe("the routine fails in isolation", () => {
+  it("a failure leaves only the error's name in the log, waits for the next day and doesn't hold up writes", async () => {
     const backend = vaultWith();
     const stub = vault("ciclo-falha");
     await dueIn(stub, true);
@@ -567,7 +567,7 @@ describe("a rotina falha sozinha", () => {
       status: "done",
     });
     await runDurableObjectAlarm(stub);
-    // O relatório não consegue gravar o que arquivou.
+    // The report can't write down what it archived.
     await rows(stub, "DROP TABLE archived_tasks");
     const errors = vi.spyOn(console, "error");
     const write = await written(stub, "alan", TOOL_AGENT, {
@@ -577,14 +577,14 @@ describe("a rotina falha sozinha", () => {
     });
     await dueIn(stub, false);
     await runDurableObjectAlarm(stub);
-    // A gravação do cliente saiu no mesmo alarme, antes da rotina.
+    // The client's write went out in the same alarm, before the routine.
     expect(backend.files()).toHaveProperty(write);
     const failed = errors.mock.calls.find(([line]) => line === "Vault: the daily routine failed");
     expect(failed).toHaveLength(2);
     expect(failed?.[1]).toMatch(/^\w+$/);
     expect(JSON.stringify(errors.mock.calls)).not.toContain("condom");
     errors.mockRestore();
-    // A próxima tentativa é amanhã, e o alarme continua armado.
+    // The next try is tomorrow, and the alarm stays set.
     const after = (
       await rows(stub, "SELECT value FROM state WHERE key = 'lifecycle_after'")
     )[0] as {
@@ -597,7 +597,7 @@ describe("a rotina falha sozinha", () => {
     expect(backend.files()[done]).not.toContain("archived");
   });
 
-  it("sem a configuração dos clientes, nada é arquivado, e o relatório sai assim mesmo", async () => {
+  it("without the client configuration, nothing is archived, and the report goes out anyway", async () => {
     const backend = vaultWith();
     const stub = vault("ciclo-sem-configuracao");
     await dueIn(stub, true);
@@ -622,7 +622,7 @@ describe("a rotina falha sozinha", () => {
     expect(report(backend)).toContain(`[[${done.slice(0, -3)}|Buscar a encomenda]]`);
   });
 
-  it("espera o índice que não alcança o head, e tenta de novo no próximo alarme", async () => {
+  it("waits for an index that doesn't reach the head, and tries again on the next alarm", async () => {
     vaultWith({ "memory/notes/a.md": "# A\n\nUm.\n", "knowledge/a.md": "# A\n\nUm.\n" });
     const stub = vault("ciclo-indice");
     await dueIn(stub, true);
@@ -643,8 +643,8 @@ describe("a rotina falha sozinha", () => {
   });
 });
 
-describe("as mudanças nas notas do dono", () => {
-  it("contam um commit cuja resposta se perdeu, quando a sincronização o acha", async () => {
+describe("the changes to the owner's notes", () => {
+  it("count a commit whose answer was lost, when the sync finds it", async () => {
     const cha = "memory/notes/cha.md";
     const velho = "memory/notes/velho.md";
     const pao = "memory/notes/pao.md";
@@ -669,7 +669,7 @@ describe("as mudanças nas notas do dono", () => {
       [
         { path: cha, content: "# Chá\n\nPreto.\n" },
         { path: velho, content: null },
-        // A nota do próprio servidor: trocar a versão dele não é mudança do dono.
+        // The server's own note: replacing its version isn't an owner's change.
         { path: pao, content: "# Pão\n\nCom sal.\n" },
       ],
       "x",
@@ -686,7 +686,7 @@ describe("as mudanças nas notas do dono", () => {
     ]);
   });
 
-  it("o «esqueça» do dono tira o relatório da fila e faz a rotina rodar de novo", async () => {
+  it('the owner\'s "forget" takes the report out of the queue and makes the routine run again', async () => {
     const backend = vaultWith({ "memory/notes/a.md": "# A\n\nUm.\n" });
     const stub = vault("ciclo-esqueca");
     await dueIn(stub, true);

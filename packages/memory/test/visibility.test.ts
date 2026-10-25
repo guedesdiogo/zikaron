@@ -1,4 +1,4 @@
-// Quem lê o quê (ADR-0001 §3 e §5), em cada caminho de leitura do índice.
+// Who reads what (ADR-0001 §3 and §5), on each of the index's read paths.
 import { runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
@@ -15,7 +15,7 @@ import { FakeVault } from "./vault.ts";
 
 type Origin = Record<string, string>;
 
-/** Uma nota fixada no escopo global, que fala de «Projeto Xis» e aponta para o hub. */
+/** A note pinned in the global scope, which talks about "Projeto Xis" and points to the hub. */
 function note(title: string, origin: Origin | null): string {
   const block =
     origin === null
@@ -26,7 +26,7 @@ function note(title: string, origin: Origin | null): string {
   return `---\npinned: true\nentities:\n  - Projeto Xis\n${block}---\n\n# ${title}\n\nNota comum sobre o Projeto Xis. Ver [[memory/notes/hub]].\n`;
 }
 
-/** As notas de teste: o nome diz de onde cada uma veio; `authored` diz se o servidor a escreveu. */
+/** The test notes: each name says where it came from; `authored`, whether the server wrote it. */
 const NOTES: Record<string, { origin: Origin | null; authored: boolean }> = {
   dono: { origin: null, authored: false },
   "dono-pendente": {
@@ -56,19 +56,19 @@ const NOTES: Record<string, { origin: Origin | null; authored: boolean }> = {
     authored: true,
   },
   "sem-origem": { origin: null, authored: true },
-  // Um cliente que saiu da configuração (ou nunca esteve nela) conta como `exposed`.
+  // A client that left the configuration (or was never in it) counts as `exposed`.
   "zeca-concluiu": {
     origin: { client: "zeca", channel: "tool", source: "agent", review: "pending" },
     authored: true,
   },
-  // O dono editou uma nota pendente de fora e deixou o `origin` quebrado: não é um «sim».
+  // The owner edited a pending outside note and left the `origin` broken: that isn't a "yes".
   "dono-quebrou-origin": {
     origin: { client: "noah", channel: "tool", source: "external", extra: "x" },
     authored: false,
   },
 };
 const pathOf = (name: string) => `memory/notes/${name}.md`;
-/** As notas que esperam o «sim» do dono. */
+/** The notes waiting for the owner's "yes". */
 const PENDING = ["alan-concluiu", "alan-externa", "dono-pendente", "noah-externa", "zeca-concluiu"];
 const HUB = pathOf("hub");
 const ALL = Object.keys(NOTES).sort();
@@ -84,11 +84,11 @@ const ALAN = policy("alan", "privileged");
 const ALAN_SEM_CLAIMS = policy("alan", "privileged", []);
 const KELPIE = policy("kelpie", "plain");
 
-/** O que cada leitor deve ver. */
+/** What each reader should see. */
 const EXPECTED: [string, ReaderPolicy, string[]][] = [
   ["exposed (noah)", NOAH, ALL],
   ["privileged (alan)", ALAN, ["alan-concluiu", "confirmada", "dono", "noah-dono"].sort()],
-  ["privileged sem ownerClaims", ALAN_SEM_CLAIMS, ["alan-concluiu", "confirmada", "dono"].sort()],
+  ["privileged (no ownerClaims)", ALAN_SEM_CLAIMS, ["alan-concluiu", "confirmada", "dono"].sort()],
   [
     "plain (kelpie)",
     KELPIE,
@@ -121,8 +121,8 @@ const names = (paths: readonly string[]) =>
     .map((path) => path.slice("memory/notes/".length, -3))
     .sort();
 
-describe.each(EXPECTED)("o leitor %s", (_label, reader, expected) => {
-  it("vê o mesmo conjunto em todo caminho de leitura do índice", async () => {
+describe.each(EXPECTED)("the reader %s", (_label, reader, expected) => {
+  it("sees the same set on every one of the index's read paths", async () => {
     await withVault(
       `visivel-${reader.client}-${reader.mode}-${reader.ownerClaims.length}`,
       async (index) => {
@@ -162,8 +162,8 @@ describe.each(EXPECTED)("o leitor %s", (_label, reader, expected) => {
   });
 });
 
-describe("sem leitor", () => {
-  it("o índice vê tudo, como antes", async () => {
+describe("without a reader", () => {
+  it("the index sees everything, as before", async () => {
     await withVault("visivel-todos", async (index) => {
       expect(names(index.search("comum", { limit: 100 }).map((hit) => hit.path))).toEqual(ALL);
       expect(names(index.pending({ limit: 100 }).map((hit) => hit.path))).toEqual(PENDING);
@@ -171,7 +171,7 @@ describe("sem leitor", () => {
   });
 });
 
-/** A linha logo abaixo do cabeçalho de cada nota de um bloco, pelo nome da nota. */
+/** The line right below each note's heading in a block, by the note's name. */
 function provenanceLines(text: string): Record<string, string> {
   const lines = text.split("\n");
   const found: Record<string, string> = {};
@@ -179,7 +179,7 @@ function provenanceLines(text: string): Record<string, string> {
     const heading = /^## .* \((memory\/notes\/[^)]+)\.md\) \[([0-9a-f]{16})\]$/.exec(line);
     if (heading === null) return;
     const [, path = "", id] = heading;
-    // A linha de origem termina no id do bloco, como o cabeçalho (#16).
+    // The origin line ends in the block's id, as the heading does (#16).
     const origin = lines[i + 1] ?? "";
     expect(origin.endsWith(` [${id}]`)).toBe(true);
     found[path.slice("memory/notes/".length)] = origin.slice(0, -` [${id}]`.length);
@@ -187,29 +187,29 @@ function provenanceLines(text: string): Record<string, string> {
   return found;
 }
 
-/** A origem que cada nota diz para o Noah, que vê tudo, com o `ownerClaims` dele. */
+/** The origin each note gives Noah, who sees everything, with his `ownerClaims`. */
 const ORIGINS: Record<string, string> = {
-  confirmada: "origem: dono",
-  dono: "origem: dono",
-  "dono-pendente": "origem: noah, de fora, pendente",
-  "noah-externa": "origem: noah, de fora, pendente",
-  "noah-dono": "origem: dono",
-  "noah-dono-ferramenta": "origem: noah, diz ser do dono",
-  "alan-concluiu": "origem: alan, conclusão, pendente",
-  "alan-externa": "origem: alan, de fora, pendente",
-  "alan-herdada": "origem: alan, conclusão, contaminação herdada",
-  "sem-origem": "origem: desconhecida",
-  "zeca-concluiu": "origem: zeca, conclusão, pendente",
-  "dono-quebrou-origin": "origem: desconhecida",
+  confirmada: "origin: owner",
+  dono: "origin: owner",
+  "dono-pendente": "origin: noah, from outside, pending",
+  "noah-externa": "origin: noah, from outside, pending",
+  "noah-dono": "origin: owner",
+  "noah-dono-ferramenta": "origin: noah, claims to be the owner's",
+  "alan-concluiu": "origin: alan, conclusion, pending",
+  "alan-externa": "origin: alan, from outside, pending",
+  "alan-herdada": "origin: alan, conclusion, inherited taint",
+  "sem-origem": "origin: unknown",
+  "zeca-concluiu": "origin: zeca, conclusion, pending",
+  "dono-quebrou-origin": "origin: unknown",
 };
 
-describe("a proveniência no recall e no núcleo (ADR-0001 §6)", () => {
-  it("cada nota diz a origem e se está pendente, logo abaixo do cabeçalho", async () => {
+describe("provenance in recall and in the core (ADR-0001 §6)", () => {
+  it("each note gives its origin and whether it is pending, right below the heading", async () => {
     await withVault("proveniencia", async (index) => {
       const hits = retrieve(index, "Projeto Xis comum", { reader: NOAH, limit: 100 });
       const packed = pack(index, hits, { budgetTokens: 20_000, reader: NOAH });
-      // O hub, uma nota do dono sem pin, entra pelo grafo.
-      expect(provenanceLines(packed.text)).toEqual({ ...ORIGINS, hub: "origem: dono" });
+      // The hub, an owner's note without a pin, comes in through the graph.
+      expect(provenanceLines(packed.text)).toEqual({ ...ORIGINS, hub: "origin: owner" });
       const core = coreBlock(index, {
         agentId: "noah",
         budgetTokens: 20_000,
@@ -217,14 +217,14 @@ describe("a proveniência no recall e no núcleo (ADR-0001 §6)", () => {
         reader: NOAH,
       });
       expect(provenanceLines(core.text)).toEqual(ORIGINS);
-      // Sem leitor, nenhuma versão do servidor vale como do dono.
+      // Without a reader, no server version counts as the owner's.
       const skeptical = provenanceLines(pack(index, hits, { budgetTokens: 20_000 }).text);
-      expect(skeptical["noah-dono"]).toBe("origem: noah, diz ser do dono");
-      expect(skeptical.dono).toBe("origem: dono");
+      expect(skeptical["noah-dono"]).toBe("origin: noah, claims to be the owner's");
+      expect(skeptical.dono).toBe("origin: owner");
     });
   });
 
-  it("dá o cliente como «?» quando o nome não vale, e nunca a evidência", () => {
+  it('gives the client as "?" when the name is invalid, and never the evidence', () => {
     const origin = {
       client: "Fora do Padrão",
       channel: "tool" as const,
@@ -233,13 +233,13 @@ describe("a proveniência no recall e no núcleo (ADR-0001 §6)", () => {
       review: null,
       taint: null,
     };
-    expect(provenance(origin, false)).toBe("origem: ?, conclusão");
-    expect(provenance(origin, true)).toBe("origem: dono");
+    expect(provenance(origin, false)).toBe("origin: ?, conclusion");
+    expect(provenance(origin, true)).toBe("origin: owner");
   });
 });
 
-describe("a confiança de uma nota", () => {
-  it("diz se ela vale como do dono e se está contaminada, pela configuração atual", async () => {
+describe("a note's trust", () => {
+  it("says if it is owner-grade and if it is tainted, under the current settings", async () => {
     await withVault("confianca", async (index) => {
       const trust = (name: string, reader: ReaderPolicy) => index.trust(pathOf(name), reader);
       expect(trust("dono", ALAN)).toEqual({ ownerGrade: true, tainted: false });
@@ -254,11 +254,11 @@ describe("a confiança de uma nota", () => {
     });
   });
 
-  it("dá a confiança de uma versão anterior pelo commit dela", async () => {
+  it("gives an earlier version's trust by its commit", async () => {
     await withVault("confianca-commit", async (index) => {
       const path = pathOf("dono");
       const before = index.current(path)?.commit ?? "";
-      // O Noah grava por cima, de fora: a versão atual fica contaminada, a anterior não.
+      // Noah writes over it, from outside: the current version is tainted, the earlier one isn't.
       const text = note("dono", { client: "noah", channel: "tool", source: "external" });
       index.markAuthored([await gitBlobSha(text)]);
       const vault = new FakeVault();
@@ -273,7 +273,7 @@ describe("a confiança de uma nota", () => {
     });
   });
 
-  it("o registro do que o servidor escreveu sobrevive a um rebuild", async () => {
+  it("the record of what the server wrote survives a rebuild", async () => {
     await withVault("confianca-rebuild", async (index) => {
       await index.rebuild([]);
       expect(index.trust(pathOf("noah-externa"), ALAN)).toBeNull();
@@ -291,8 +291,8 @@ describe("a confiança de uma nota", () => {
   });
 });
 
-describe("as falhas que a revisão do PR #11 achou", () => {
-  it("um frontmatter quebrado com `origin` não vale como do dono; sem `origin`, vale", async () => {
+describe("the flaws the review of PR #11 found", () => {
+  it("a broken frontmatter with `origin` isn't owner-grade; without `origin`, it is", async () => {
     await runInDurableObject(
       env.INDEX_HOST.getByName("frontmatter-quebrado"),
       async (_i, state) => {
@@ -311,7 +311,7 @@ describe("as falhas que a revisão do PR #11 achou", () => {
     );
   });
 
-  it("os links de uma nota que o leitor não vê não aparecem", async () => {
+  it("the links of a note the reader doesn't see don't show up", async () => {
     await withVault("links-invisiveis", async (index) => {
       expect(index.links(pathOf("noah-externa"), { reader: ALAN })).toEqual([]);
       expect(index.links(pathOf("noah-externa"), { reader: NOAH })).not.toEqual([]);
@@ -319,10 +319,10 @@ describe("as falhas que a revisão do PR #11 achou", () => {
   });
 });
 
-describe("o núcleo de quem não vê tudo", () => {
-  it("uma nota escondida não come o orçamento do rodapé", async () => {
-    // Quatro tamanhos de nota e um orçamento que anda de token em token: algum cruza a fronteira
-    // de um caractere que o rodapé de duas notas, em vez de uma, tomaria.
+describe("the core of a reader who doesn't see everything", () => {
+  it("a hidden note doesn't eat into the footer's budget", async () => {
+    // Four note sizes and a budget that steps one token at a time: one of them crosses the
+    // one-character boundary that the footer would take for two notes instead of one.
     const visibles = ["", "x", "xx", "xxx"].map(
       (pad) => `# A\n\nUma nota curta do perfil.${pad}\n`,
     );

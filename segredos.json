@@ -7,7 +7,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://dash.cloudflare.com/profile/api-tokens",
-      "instrucao": "Crie um token próprio só com Account › Workers Scripts › Edit e Account › Account Settings › Read, na conta do Zikaron, e cole o valor."
+      "instrucao": "Create a token of its own with only Account › Workers Scripts › Edit and Account › Account Settings › Read, on the Zikaron account, and paste the value."
     },
     {
       "nome": "CLOUDFLARE_ACCOUNT_ID",
@@ -16,7 +16,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://dash.cloudflare.com/",
-      "instrucao": "O Account ID da conta do Zikaron (na página da conta, ao lado)."
+      "instrucao": "The Account ID of the Zikaron account (on the account's page, at the side)."
     },
     {
       "nome": "ZIKARON_GITHUB_APP_ID",
@@ -25,7 +25,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://github.com/settings/apps",
-      "instrucao": "O App ID do GitHub App zikaron."
+      "instrucao": "The App ID of the zikaron GitHub App."
     },
     {
       "nome": "ZIKARON_GITHUB_INSTALLATION_ID",
@@ -34,7 +34,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://github.com/settings/installations",
-      "instrucao": "O número no fim do endereço da instalação do App zikaron no cofre de teste."
+      "instrucao": "The number at the end of the address of the zikaron App's installation on the test vault."
     },
     {
       "nome": "ACCESS_TEAM_DOMAIN",
@@ -43,7 +43,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://one.dash.cloudflare.com/",
-      "instrucao": "https://<time>.cloudflareaccess.com, sem barra no fim."
+      "instrucao": "https://<team>.cloudflareaccess.com, with no trailing slash."
     },
     {
       "nome": "ACCESS_AUD",
@@ -52,7 +52,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://one.dash.cloudflare.com/",
-      "instrucao": "Access › Applications › a aplicação do zikaron-staging › o Application Audience (AUD) Tag."
+      "instrucao": "Access › Applications › the zikaron-staging application › the Application Audience (AUD) Tag."
     },
     {
       "nome": "ZIKARON_CLIENTS",
@@ -60,7 +60,7 @@
       "ambiente": "staging",
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
-      "instrucao": "O JSON de docs/api.md, com os Client IDs de noah-teste, alan-teste e outro-teste, numa linha."
+      "instrucao": "The JSON from docs/api.md, with the Client IDs of noah-teste, alan-teste and outro-teste, on one line."
     },
     {
       "nome": "STAGING_URL",
@@ -69,7 +69,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://dash.cloudflare.com/",
-      "instrucao": "https://zikaron-staging.<subdomínio>.workers.dev, sem barra no fim: o subdomínio workers.dev da conta aparece em Workers & Pages. Precisa existir antes do primeiro deploy, que sem ele não publica."
+      "instrucao": "https://zikaron-staging.<subdomain>.workers.dev, with no trailing slash: the account's workers.dev subdomain shows up under Workers & Pages. It has to exist before the first deploy, which does not publish without it."
     },
     {
       "nome": "E2E_NOAH_CLIENT_ID",
@@ -78,7 +78,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://one.dash.cloudflare.com/",
-      "instrucao": "Access › Service credentials › noah-teste: o Client ID."
+      "instrucao": "Access › Service credentials › noah-teste: the Client ID."
     },
     {
       "nome": "E2E_NOAH_CLIENT_SECRET",
@@ -87,7 +87,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://one.dash.cloudflare.com/",
-      "instrucao": "Access › Service credentials › noah-teste: o Client Secret."
+      "instrucao": "Access › Service credentials › noah-teste: the Client Secret."
     },
     {
       "nome": "E2E_ALAN_CLIENT_ID",
@@ -96,7 +96,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://one.dash.cloudflare.com/",
-      "instrucao": "Access › Service credentials › alan-teste: o Client ID."
+      "instrucao": "Access › Service credentials › alan-teste: the Client ID."
     },
     {
       "nome": "E2E_ALAN_CLIENT_SECRET",
@@ -105,7 +105,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://one.dash.cloudflare.com/",
-      "instrucao": "Access › Service credentials › alan-teste: o Client Secret."
+      "instrucao": "Access › Service credentials › alan-teste: the Client Secret."
     },
     {
       "nome": "E2E_OUTRO_CLIENT_ID",
@@ -114,7 +114,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://one.dash.cloudflare.com/",
-      "instrucao": "Access › Service credentials › outro-teste: o Client ID."
+      "instrucao": "Access › Service credentials › outro-teste: the Client ID."
     },
     {
       "nome": "E2E_OUTRO_CLIENT_SECRET",
@@ -123,7 +123,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://one.dash.cloudflare.com/",
-      "instrucao": "Access › Service credentials › outro-teste: o Client Secret."
+      "instrucao": "Access › Service credentials › outro-teste: the Client Secret."
     },
     {
       "nome": "E2E_VAULT_TOKEN",
@@ -132,7 +132,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://github.com/settings/personal-access-tokens/new",
-      "instrucao": "Token fino com Contents: Read and write só no repositório zikaron-cofre-teste."
+      "instrucao": "Fine-grained token with Contents: Read and write on the zikaron-cofre-teste repository only."
     },
     {
       "nome": "CLOUDFLARE_API_TOKEN",
@@ -141,7 +141,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://dash.cloudflare.com/profile/api-tokens",
-      "instrucao": "Crie um token próprio da produção, com as mesmas permissões do token do staging (Account › Workers Scripts › Edit e Account › Account Settings › Read), na conta do Zikaron, e cole o valor."
+      "instrucao": "Create a token of production's own, with the same permissions as the staging token (Account › Workers Scripts › Edit and Account › Account Settings › Read), on the Zikaron account, and paste the value."
     },
     {
       "nome": "CLOUDFLARE_ACCOUNT_ID",
@@ -150,7 +150,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://dash.cloudflare.com/",
-      "instrucao": "O Account ID da conta do Zikaron (na página da conta, ao lado)."
+      "instrucao": "The Account ID of the Zikaron account (on the account's page, at the side)."
     },
     {
       "nome": "ZIKARON_GITHUB_APP_ID",
@@ -159,7 +159,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://github.com/settings/apps",
-      "instrucao": "O App ID do GitHub App de produção, zikaron-producao (nunca o zikaron do staging)."
+      "instrucao": "The App ID of the production GitHub App, zikaron-producao (never the staging zikaron)."
     },
     {
       "nome": "ZIKARON_GITHUB_INSTALLATION_ID",
@@ -168,7 +168,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://github.com/settings/installations",
-      "instrucao": "O número no fim do endereço da instalação do App zikaron-producao no kelpie-vault. Só depois de o context-store do Kelpie parar (docs/producao.md)."
+      "instrucao": "The number at the end of the address of the zikaron-producao App's installation on kelpie-vault. Only after Kelpie's context-store stops (docs/production.md)."
     },
     {
       "nome": "ACCESS_TEAM_DOMAIN",
@@ -177,7 +177,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://one.dash.cloudflare.com/",
-      "instrucao": "https://<time>.cloudflareaccess.com, sem barra no fim."
+      "instrucao": "https://<team>.cloudflareaccess.com, with no trailing slash."
     },
     {
       "nome": "ACCESS_AUD",
@@ -186,7 +186,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://one.dash.cloudflare.com/",
-      "instrucao": "Access › Applications › a aplicação do zikaron (produção) › o Application Audience (AUD) Tag."
+      "instrucao": "Access › Applications › the zikaron (production) application › the Application Audience (AUD) Tag."
     },
     {
       "nome": "ZIKARON_CLIENTS",
@@ -194,7 +194,7 @@
       "ambiente": "producao",
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
-      "instrucao": "O JSON de docs/api.md, com os Client IDs dos service tokens noah, alan e mac e as flags do ADR-0001 §7, numa linha."
+      "instrucao": "The JSON from docs/api.md, with the Client IDs of the noah, alan and mac service tokens and the flags of ADR-0001 §7, on one line."
     },
     {
       "nome": "PRODUCAO_URL",
@@ -203,7 +203,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://dash.cloudflare.com/",
-      "instrucao": "https://zikaron.<subdomínio>.workers.dev, sem barra no fim: o subdomínio workers.dev da conta aparece em Workers & Pages. Precisa existir antes da primeira release, que sem ele não publica."
+      "instrucao": "https://zikaron.<subdomain>.workers.dev, with no trailing slash: the account's workers.dev subdomain shows up under Workers & Pages. It has to exist before the first release, which does not publish without it."
     }
   ]
 }

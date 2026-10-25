@@ -1,16 +1,16 @@
-// O que as rotas do Worker compartilham: o corpo JSON de um pedido, com teto, e as respostas JSON.
+// What the Worker's routes share: a request's JSON body, with a cap, and the JSON responses.
 
-/** O maior corpo que uma rota lê: uma nota tem 1 MiB no máximo, e o pedido leva a nota e pouco mais. */
+/** The largest body a route reads: a note is 1 MiB at most; a request, the note and a bit more. */
 export const MAX_REQUEST_BYTES = 1_100_000;
 
-/** Uma resposta JSON. */
+/** A JSON response. */
 export function json(status: number, body: unknown, headers: Record<string, string> = {}) {
   return Response.json(body, { status, headers });
 }
 
 /**
- * O corpo como texto, ou null quando passa de `max` bytes. Lê aos pedaços e para no limite, para um
- * corpo sem `Content-Length` não entrar inteiro na memória.
+ * The body as text, or null when it exceeds `max` bytes. Reads in chunks and stops at the limit, so
+ * a body without `Content-Length` doesn't get into memory whole.
  */
 export async function readUpTo(request: Request, max: number): Promise<string | null> {
   if (request.body === null) return "";
@@ -36,7 +36,7 @@ export async function readUpTo(request: Request, max: number): Promise<string | 
   return new TextDecoder().decode(bytes);
 }
 
-/** O corpo de um pedido como JSON, ou o porquê de não ser: grande demais, ou JSON que não vale. */
+/** A request's body as JSON, or why it isn't: too large, or invalid JSON. */
 export async function readJson(
   request: Request,
 ): Promise<{ ok: true; value: unknown } | { ok: false; reason: "too_large" | "invalid_json" }> {
@@ -51,7 +51,7 @@ export async function readJson(
   }
 }
 
-/** Um objeto JSON (não lista, não nulo). */
+/** A JSON object (not an array, not null). */
 export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -1,13 +1,15 @@
-# Deploy de um ambiente (prumo AMB-02 e AMB-03), do exemplo do prumo (forma do play-x9), adaptado ao
-# Worker do Zikaron. Chamado pelo staging.yml (staging, o commit de cada CI verde na main) e pelo
-# producao.yml (producao, o commit da tag da release). Publica o apps/server com
-# `wrangler deploy --env <ambiente>` e espera o /health responder com o ambiente e o commit.
+# Deploy of one environment (prumo AMB-02 and AMB-03), from the prumo example (the play-x9 shape),
+# adapted to the Zikaron Worker. Called by staging.yml (staging, the commit of each green CI on
+# main) and by producao.yml (producao, the release tag's commit). Publishes apps/server with
+# `wrangler deploy --env <environment>` and waits for /health to answer with the environment and
+# the commit.
 #
-# O repo é público e o log de cada passo mostra o bloco `env:`. Por isso, ao contrário do exemplo:
-# - tudo o que identifica a conta, o Access, os clientes, o App ou o endereço do Worker chega como
-#   segredo do environment, que o log mascara; só o VAULT_REPOSITORY é variável;
-# - o endereço não é entrada nem `environment.url`, que a página pública de Deployments mostraria:
-#   vem do segredo STAGING_URL ou PRODUCAO_URL, e é mascarado antes de o wrangler imprimi-lo.
+# The repo is public and the log of every step shows the `env:` block. So, unlike the example:
+# - everything that identifies the account, Access, the clients, the App or the Worker's address
+#   arrives as an environment secret, which the log masks; only VAULT_REPOSITORY is a variable;
+# - the address is neither an input nor `environment.url`, which the public Deployments page would
+#   show: it comes from the STAGING_URL or PRODUCAO_URL secret, and is masked before wrangler
+#   prints it.
 name: Deploy
 
 on:
@@ -16,13 +18,15 @@ on:
       environment:
         type: string
         required: true
-      # O sha completo a publicar. Vazio publica o commit do próprio run. O staging passa o commit
-      # do CI que terminou, e a produção o da tag: num Run workflow, o commit do run é a ponta da main.
+      # The full sha to publish. Empty publishes the run's own commit. Staging passes the commit of
+      # the CI that finished, and production the tag's: in a Run workflow, the run's commit is the
+      # tip of main.
       ref:
         type: string
         default: ""
-    # Por nome, não com `secrets: inherit`. Dentro do job, que declara o environment, vale o
-    # segredo do environment com o mesmo nome: o token do staging não alcança a produção (SEG-12).
+    # By name, not with `secrets: inherit`. Inside the job, which declares the environment, the
+    # environment secret with the same name applies: the staging token does not reach production
+    # (SEG-12).
     secrets:
       CLOUDFLARE_API_TOKEN:
         required: false
@@ -38,7 +42,7 @@ on:
         required: false
       ZIKARON_CLIENTS:
         required: false
-      # O endereço do Worker de cada ambiente, exatamente como o wrangler o imprime.
+      # Each environment's Worker address, exactly as wrangler prints it.
       STAGING_URL:
         required: false
       PRODUCAO_URL:
@@ -49,11 +53,11 @@ permissions:
 
 jobs:
   deploy:
-    name: Publica e confere o /health
+    name: Publish and check /health
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: ${{ inputs.environment }}
-    # Um deploy por vez em cada ambiente; o que está rodando sempre termina.
+    # One deploy at a time per environment; the one running always finishes.
     concurrency:
       group: deploy-${{ inputs.environment }}
       cancel-in-progress: false
@@ -61,9 +65,9 @@ jobs:
       DEPLOY_ENV: ${{ inputs.environment }}
       DEPLOY_SHA: ${{ inputs.ref || github.sha }}
     steps:
-      # Só a produção. Um «Re-run failed jobs» roda este job de novo sem o gate do producao.yml:
-      # a conferência do dono se repete aqui, e a produção publica sempre o commit de uma tag.
-      - name: Produção pedida por um dono, com o commit da tag
+      # Production only. A "Re-run failed jobs" runs this job again without the producao.yml gate:
+      # the owner check repeats here, and production always publishes a tag's commit.
+      - name: Production requested by an owner, at a tag's commit
         if: inputs.environment == 'producao'
         env:
           DONOS: ${{ vars.PRUMO_DONOS }}
@@ -71,17 +75,17 @@ jobs:
           REF: ${{ inputs.ref }}
         run: |
           if ! tr -s ',[:blank:]' '\n' <<<"$DONOS" | grep -qixF -- "$ATOR"; then
-            echo "$ATOR não está na variável PRUMO_DONOS: só um dono publica a produção." >&2
+            echo "$ATOR is not in the PRUMO_DONOS variable: only an owner publishes production." >&2
             exit 1
           fi
           if [ -z "$REF" ]; then
-            echo "A produção publica o commit de uma tag, e o ref veio vazio." >&2
+            echo "Production publishes a tag's commit, and the ref came empty." >&2
             exit 1
           fi
-      # Sem o token e a conta, termina verde com um aviso e não publica nada. Com eles, o endereço
-      # do Worker precisa existir: ele leva o subdomínio da conta, e o wrangler o imprime. A máscara
-      # vale para o resto do job, o wrangler e o /health inclusive.
-      - name: Token, conta e endereço do Worker
+      # Without the token and the account, it ends green with a warning and publishes nothing. With
+      # them, the Worker's address has to exist: it carries the account's subdomain, and wrangler
+      # prints it. The mask holds for the rest of the job, wrangler and /health included.
+      - name: Token, account and Worker address
         id: pronto
         env:
           TEM_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
@@ -89,16 +93,16 @@ jobs:
           URL_NOME: ${{ inputs.environment == 'producao' && 'PRODUCAO_URL' || 'STAGING_URL' }}
         run: |
           if [ "$TEM_TOKEN" != true ]; then
-            echo "::warning::O environment $DEPLOY_ENV ainda não tem CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID: nada foi publicado."
+            echo "::warning::The $DEPLOY_ENV environment has no CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID yet: nothing was published."
             echo "publica=false" >>"$GITHUB_OUTPUT"
             exit 0
           fi
           url=${WORKER_URL%/}
-          # O endereço tem de ser exatamente o que o wrangler vai imprimir, ou a máscara não pega.
-          worker=zikaron
-          if [ "$DEPLOY_ENV" = staging ]; then worker=zikaron-staging; fi
+          # The address has to be exactly what wrangler will print, or the mask does not catch it.
+          worker=zikaron doc=docs/production.md
+          if [ "$DEPLOY_ENV" = staging ]; then worker=zikaron-staging doc=docs/staging.md; fi
           if ! [[ "$url" =~ ^https://${worker}\.([a-z0-9-]+)\.workers\.dev$ ]]; then
-            echo "O segredo $URL_NOME do environment $DEPLOY_ENV falta ou não é https://$worker.<subdomínio>.workers.dev: nada foi publicado, para o endereço não sair sem máscara no log (docs/$DEPLOY_ENV.md)." >&2
+            echo "The $URL_NOME secret of the $DEPLOY_ENV environment is missing or is not https://$worker.<subdomain>.workers.dev: nothing was published, so the address does not go out unmasked in the log ($doc)." >&2
             exit 1
           fi
           echo "::add-mask::$url"
@@ -112,9 +116,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         if: steps.pronto.outputs.publica == 'true'
-      # O token só chega a este passo, não ao install nem às actions. Uma variável vazia fica de
-      # fora: vale o vazio do wrangler.jsonc, e o cofre ou a identidade ficam desligados até ela
-      # existir. ZIKARON_ENV e ZIKARON_COMMIT são o que o /health devolve (AMB-03).
+      # The token reaches only this step, not the install or the actions. An empty variable stays
+      # out: the empty value in wrangler.jsonc applies, and the vault or the identity stay off until
+      # it exists. ZIKARON_ENV and ZIKARON_COMMIT are what /health returns (AMB-03).
       - name: wrangler deploy --env ${{ inputs.environment }}
         if: steps.pronto.outputs.publica == 'true'
         working-directory: apps/server
@@ -132,18 +136,18 @@ jobs:
           for name in GITHUB_APP_ID GITHUB_INSTALLATION_ID VAULT_REPOSITORY ACCESS_TEAM_DOMAIN ACCESS_AUD ZIKARON_CLIENTS; do
             if [ -n "${!name}" ]; then args+=(--var "$name:${!name}"); fi
           done
-          # Num erro de autenticação, o wrangler imprime o e-mail e as contas que o token vê, sem
-          # máscara: a saída vai para um arquivo, e o log público só leva o código do erro.
+          # On an authentication error, wrangler prints the email and the accounts the token sees,
+          # unmasked: the output goes to a file, and the public log only carries the error code.
           log="$RUNNER_TEMP/wrangler.log"
           if ./node_modules/.bin/wrangler deploy --env "$DEPLOY_ENV" "${args[@]}" >"$log" 2>&1; then
             cat "$log"
           else
             code=$(grep -oE '\[code: [0-9]+\]' "$log" | head -1 || true)
-            echo "O wrangler deploy falhou ${code:-sem código}; a saída dele fica fora do log público." >&2
+            echo "wrangler deploy failed ${code:-with no code}; its output stays out of the public log." >&2
             exit 1
           fi
-      # O /health fica num bypass do Access (docs/staging.md e docs/producao.md).
-      - name: Confere o /health
+      # /health sits behind an Access bypass (docs/staging.md and docs/production.md).
+      - name: Check /health
         if: steps.pronto.outputs.publica == 'true'
         env:
           WORKER_URL: ${{ inputs.environment == 'producao' && secrets.PRODUCAO_URL || secrets.STAGING_URL }}

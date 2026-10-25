@@ -1,34 +1,34 @@
-// A identidade vem da credencial (ADR-0001 §1): o Cloudflare Access na frente do Worker, com um
-// service token por cliente, e o Worker validando o JWT que o Access põe em
-// `Cf-Access-Jwt-Assertion`, mesmo com o Access na frente. O `common_name` do token (o Client ID do
-// service token) escolhe o cliente na configuração do deploy; nada no pedido escolhe o cliente.
+// Identity comes from the credential (ADR-0001 §1): Cloudflare Access in front of the Worker, with
+// one service token per client, and the Worker validating the JWT that Access puts in
+// `Cf-Access-Jwt-Assertion`, even with Access in front. The token's `common_name` (the service
+// token's Client ID) picks the client in the deploy's configuration; nothing in the request does.
 import { CLIENT_NAME, type ReaderPolicy } from "@zikaron/memory";
 
-/** Um cliente da configuração do deploy (`ZIKARON_CLIENTS`). */
+/** A client in the deploy's configuration (`ZIKARON_CLIENTS`). */
 export interface Client {
-  /** Nomeia o escopo `agent/<nome>` e o `origin.client` das versões que ele grava. */
+  /** Names the `agent/<name>` scope and the `origin.client` of the versions it writes. */
   name: string;
-  /** Lê conteúdo de fora. */
+  /** Reads outside content. */
   exposed: boolean;
-  /** Age com a autoridade do dono. */
+  /** Acts with the owner's authority. */
   privileged: boolean;
-  /** O que ele grava como dito pelo dono, pelo provedor, vale como do dono para os outros. */
+  /** What it writes as said by the owner, via the provider, counts as the owner's for others. */
   ownerClaims: boolean;
 }
 
-/** Os clientes, pelo Client ID do service token de cada um. */
+/** The clients, by each one's service token Client ID. */
 export type Clients = ReadonlyMap<string, Client>;
 
 /**
- * O próprio servidor, como quem grava a rotina diária (#17): o arquivo das tarefas e o relatório.
- * Nenhum cliente da configuração tem este nome, para o trailer `Zikaron-Client` e a fila nunca
- * confundirem a rotina com um cliente.
+ * The server itself, as the writer of the daily routine (#17): the task archive and the report. No
+ * client in the configuration has this name, so the `Zikaron-Client` trailer and the queue never
+ * mistake the routine for a client.
  */
 export const SERVER_CLIENT = "zikaron";
 
 /**
- * Lê `ZIKARON_CLIENTS`: um objeto JSON do Client ID de cada service token para o cliente. Recusa a
- * configuração inteira quando algo não vale, para um erro de digitação não abrir uma porta.
+ * Reads `ZIKARON_CLIENTS`: a JSON object from each service token's Client ID to the client. Refuses
+ * the whole configuration when anything is invalid, so a typo doesn't open a door.
  */
 export function parseClients(json: string | undefined): Clients {
   if (json === undefined || json.trim() === "") throw new Error("ZIKARON_CLIENTS is empty");
@@ -36,7 +36,7 @@ export function parseClients(json: string | undefined): Clients {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("ZIKARON_CLIENTS must be an object");
   }
-  // O JSON.parse guarda só o último de dois Client IDs iguais: a repetição é recusada à parte.
+  // JSON.parse keeps only the last of two equal Client IDs: the repeat is refused separately.
   for (const id of Object.keys(value)) {
     const quoted = JSON.stringify(id);
     let count = 0;
@@ -61,7 +61,7 @@ export function parseClients(json: string | undefined): Clients {
     ) {
       throw new Error("ZIKARON_CLIENTS has an invalid client");
     }
-    // Quem lê conteúdo de fora não pode agir com a autoridade do dono.
+    // A client that reads outside content can't act with the owner's authority.
     if (client.exposed && client.privileged) {
       throw new Error("ZIKARON_CLIENTS has a client both exposed and privileged");
     }
@@ -73,7 +73,7 @@ export function parseClients(json: string | undefined): Clients {
   return clients;
 }
 
-/** A política de leitura de um cliente (ADR-0001 §5), com a configuração de todos. */
+/** A client's read policy (ADR-0001 §5), with everyone's configuration. */
 export function readerPolicy(client: Client, clients: Clients): ReaderPolicy {
   const all = [...clients.values()];
   return {
@@ -84,7 +84,7 @@ export function readerPolicy(client: Client, clients: Clients): ReaderPolicy {
   };
 }
 
-/** A aplicação do Access: o domínio do time (`https://<time>.cloudflareaccess.com`) e o AUD. */
+/** The Access application: the team domain (`https://<team>.cloudflareaccess.com`) and the AUD. */
 export interface AccessApp {
   teamDomain: string;
   aud: string;
@@ -98,7 +98,7 @@ interface Jwk {
   alg?: string;
 }
 
-/** Busca as chaves públicas do time; trocável nos testes. */
+/** Fetches the team's public keys; swappable in tests. */
 export type KeyFetcher = (url: string) => Promise<{ keys: Jwk[] }>;
 
 const fetchKeys: KeyFetcher = async (url) => {
@@ -108,12 +108,12 @@ const fetchKeys: KeyFetcher = async (url) => {
 };
 
 /**
- * As chaves ficam em cache por isolate. Um `kid` desconhecido força uma busca nova, no máximo uma
- * por minuto, para um token forjado não virar uma enxurrada de buscas.
+ * The keys are cached per isolate. An unknown `kid` forces a new fetch, at most one per minute, so
+ * a forged token doesn't turn into a flood of fetches.
  */
 const KEYS_TTL_MS = 60 * 60_000;
 const REFETCH_MS = 60_000;
-/** Uma folga para relógios que não batem. */
+/** Leeway for clocks that disagree. */
 const CLOCK_SKEW_S = 60;
 const keyCache = new Map<string, { at: number; keys: Map<string, CryptoKey> }>();
 
@@ -145,14 +145,14 @@ async function keysOf(
         ),
       );
     } catch {
-      // Uma chave que não se importa não derruba as outras.
+      // A key that fails to import doesn't bring down the others.
     }
   }
   keyCache.set(teamDomain, { at: now, keys: imported });
   return imported;
 }
 
-/** Esquece as chaves em cache (testes). */
+/** Forgets the cached keys (tests). */
 export function clearKeyCache(): void {
   keyCache.clear();
 }
@@ -175,9 +175,10 @@ function jsonPart(part: string): Record<string, unknown> | null {
 }
 
 /**
- * O Client ID de um JWT de service token do Access válido para a aplicação, ou null: assinatura
- * RS256 por uma chave do time, `iss` do time, o `aud` da aplicação, dentro da validade, do tipo
- * `app` e com `common_name`. Um JWT de login de pessoa (com `email`) não serve: só service tokens.
+ * The Client ID of an Access service token JWT valid for the application, or null: an RS256
+ * signature by a team key, the team's `iss`, the application's `aud`, within its validity, of
+ * type `app` and with a `common_name`. A person's login JWT (with `email`) won't do: service
+ * tokens only.
  */
 export async function verifyAccessJwt(
   token: string | null,
@@ -217,7 +218,7 @@ export async function verifyAccessJwt(
   return typeof commonName === "string" && commonName !== "" ? commonName : null;
 }
 
-/** O cliente de um pedido, ou null (401): a credencial decide, nunca o corpo do pedido. */
+/** A request's client, or null (401): the credential decides, never the request's body. */
 export async function clientOf(
   request: Request,
   app: AccessApp,

@@ -1,34 +1,34 @@
-# ADR-0003: Uma nota do dono muda pela palavra do dono, também pelo provedor
+# ADR-0003: An owner's note changes on the owner's word, through the provider as well
 
-- Estado: Aceito
-- Data: 2026-10-24
+- Status: Accepted
+- Date: 2026-10-24
 - Issue: [#9](https://github.com/guedesdiogo/zikaron/issues/9)
-- Emenda: [ADR-0001](0001-identidade-e-confianca.md) §4
-- Decorre de decisões do Diogo já aprovadas no [#1](https://github.com/guedesdiogo/zikaron/issues/1): o Q6 («corrija» cria uma versão nova, e a antiga fica no histórico) e o Q24 (o `ownerClaims` do Noah, «Sim, já vale»)
+- Amends: [ADR-0001](0001-identidade-e-confianca.md) §4
+- Follows from Diogo's decisions already approved in [#1](https://github.com/guedesdiogo/zikaron/issues/1): Q6 ("correct" creates a new version, and the old one stays in the history) and Q24 (Noah's `ownerClaims`, «Sim, já vale», "Yes, it applies now")
 
-## Contexto
+## Context
 
-O ADR-0001 §4 diz que nenhum agente reescreve uma nota que vale como do Diogo. A regra vem do Kelpie (guedesdiogo/kelpie#149): uma conclusão de um agente não pode apagar o que o dono disse.
+ADR-0001 §4 says no agent rewrites a note that counts as Diogo's. The rule comes from Kelpie (guedesdiogo/kelpie#149): an agent's conclusion must not erase what the owner said.
 
-Lida ao pé da letra, ela também barra o «corrija» do Q6 quando ele chega pela conversa. O Diogo diz ao Noah «corrija: a Ana mudou para o Porto», e o Noah grava pelo provedor, com `source: owner` e o id da mensagem. Essa gravação já vale como do Diogo para todos os clientes, porque o Noah tem `ownerClaims` (decisão do Q24). Recusá-la obrigaria o Noah a criar uma nota nova ao lado da antiga, e a cadeia de versões do Q6 se perderia.
+Read literally, it also blocks the "correct" of Q6 when it arrives through the conversation. Diogo tells Noah "correct: Ana moved to Porto", and Noah writes through the provider, with `source: owner` and the message id. That write already counts as Diogo's for every client, because Noah has `ownerClaims` (the Q24 decision). Refusing it would force Noah to create a new note next to the old one, and Q6's chain of versions would be lost.
 
-## Decisão
+## Decision
 
-**Uma nota que vale como do dono pode ganhar uma nova versão quando a própria gravação vale como do dono:** `source: owner`, pelo canal do provedor, de um cliente com `ownerClaims`. O que o ADR-0001 §4 proíbe continua proibido para todo o resto:
-- uma conclusão (`agent`) ou algo lido de fora (`external`);
-- qualquer coisa pelo canal de ferramenta;
-- um cliente sem `ownerClaims`.
+**A note that counts as the owner's can get a new version when the write itself counts as the owner's:** `source: owner`, through the provider channel, from a client with `ownerClaims`. What ADR-0001 §4 forbids stays forbidden for everything else:
+- a conclusion (`agent`) or something read from outside (`external`);
+- anything through the tool channel;
+- a client without `ownerClaims`.
 
-**Não mudam:**
-- nenhuma gravação substitui uma nota do núcleo (pinned ou em `profile/`) nem uma nota arquivada, nem pela palavra do dono: o núcleo entra em toda conversa, e o arquivo só se lê quando pedido;
-- «esqueça» vindo de um agente continua só nas notas do próprio cliente e nas pendentes.
+**Unchanged:**
+- no write replaces a core note (pinned or in `profile/`) or an archived note, not even on the owner's word: the core goes into every conversation, and the archive is read only when asked for;
+- "forget" from an agent still applies only to the client's own notes and the pending ones.
 
-## Consequências
+## Consequences
 
-- O «corrija» pela conversa mantém a cadeia de versões, e o git guarda a versão anterior.
-- **O risco é o mesmo do `ownerClaims`, um pouco maior:** um Noah induzido por um e-mail já podia gravar algo como dito pelo Diogo; agora pode também trocar uma nota do Diogo. O git guarda a anterior, e o relatório diário (Story 1.7) lista as notas do dono que mudaram. Desligar o `ownerClaims` do Noah fecha as duas portas de uma vez.
+- The "correct" through the conversation keeps the chain of versions, and git keeps the previous version.
+- **The risk is the same as `ownerClaims`, a little larger:** a Noah induced by an email could already write something as said by Diogo; now it can also replace a note of Diogo's. Git keeps the previous one, and the daily report (Story 1.7) lists the owner's notes that changed. Turning off Noah's `ownerClaims` closes both doors at once.
 
-## Alternativas consideradas
+## Alternatives considered
 
-- **Manter a regra ao pé da letra.** Cada correção pela conversa viraria uma nota nova ao lado da antiga, contra o Q6.
-- **Deixar qualquer gravação `owner` substituir, sem olhar o `ownerClaims`.** Um cliente cuja palavra não vale como do dono passaria a trocar as notas do dono.
+- **Keep the rule literally.** Each correction through the conversation would become a new note next to the old one, against Q6.
+- **Let any `owner` write replace, without looking at `ownerClaims`.** A client whose word does not count as the owner's would start replacing the owner's notes.
