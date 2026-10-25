@@ -1,12 +1,14 @@
 name: Staging
 
-# Publica o zikaron-staging depois que o CI passa num push na main (Story 1.8). O que barra um PR,
-# de fork ou não, é o `if` do job: só um push deste repositório. O environment `staging` só aceita
-# a main, mas num workflow_run o ref é sempre a branch padrão, então ele não é a barreira.
+# Publica o zikaron-staging depois que o CI passa num push na main (Story 1.8), pelo deploy.yml, que
+# confere o /health no fim. O que barra um PR, de fork ou não, é o `if` do job: só um push deste
+# repositório. O environment `staging` só aceita a main, mas num workflow_run o ref é sempre a
+# branch padrão, então ele não é a barreira.
 #
 # O repo é público e o log de cada passo mostra o bloco `env:`: tudo o que identifica a conta, o
-# Access, os clientes ou o endereço do Worker é segredo do environment, que o log mascara. O
-# STAGING_URL, igual ao endereço que o wrangler imprime, também mascara essa linha.
+# Access, os clientes ou o endereço do Worker é segredo do environment, que o log mascara, e o
+# deploy.yml mascara o STAGING_URL antes de o wrangler imprimi-lo. Os segredos vão por nome: dentro
+# do job do deploy.yml, que declara o environment, vale o valor do environment.
 on:
   workflow_run:
     workflows: [CI]
@@ -16,6 +18,7 @@ on:
 permissions:
   contents: read
 
+# Não `deploy-staging`: é o grupo do job do deploy.yml.
 concurrency:
   group: staging
   cancel-in-progress: false
@@ -27,38 +30,17 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_repository.full_name == github.repository
-    runs-on: ubuntu-latest
-    environment: staging
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - name: wrangler deploy --env staging
-        working-directory: apps/server
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          GITHUB_APP_ID: ${{ secrets.ZIKARON_GITHUB_APP_ID }}
-          GITHUB_INSTALLATION_ID: ${{ secrets.ZIKARON_GITHUB_INSTALLATION_ID }}
-          VAULT_REPOSITORY: ${{ vars.VAULT_REPOSITORY }}
-          ACCESS_TEAM_DOMAIN: ${{ secrets.ACCESS_TEAM_DOMAIN }}
-          ACCESS_AUD: ${{ secrets.ACCESS_AUD }}
-          ZIKARON_CLIENTS: ${{ secrets.ZIKARON_CLIENTS }}
-          STAGING_URL: ${{ secrets.STAGING_URL }}
-        run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "::warning::O environment staging ainda não tem CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID: nada foi publicado (issue #12)."
-            exit 0
-          fi
-          # Uma variável vazia fica de fora: vale o vazio do wrangler.jsonc, e o cofre ou a
-          # identidade ficam desligados até ela existir.
-          args=()
-          for name in GITHUB_APP_ID GITHUB_INSTALLATION_ID VAULT_REPOSITORY ACCESS_TEAM_DOMAIN ACCESS_AUD ZIKARON_CLIENTS; do
-            if [ -n "${!name}" ]; then args+=(--var "$name:${!name}"); fi
-          done
-          # O endereço do Worker leva o subdomínio da conta: sai mascarado no log.
-          if [ -n "$STAGING_URL" ]; then echo "::add-mask::$STAGING_URL"; fi
-          ./node_modules/.bin/wrangler deploy --env staging "${args[@]}"
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+      # O commit que o CI conferiu; num workflow_run, o github.sha é a ponta da main.
+      ref: ${{ github.event.workflow_run.head_sha }}
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ZIKARON_GITHUB_APP_ID: ${{ secrets.ZIKARON_GITHUB_APP_ID }}
+      ZIKARON_GITHUB_INSTALLATION_ID: ${{ secrets.ZIKARON_GITHUB_INSTALLATION_ID }}
+      ACCESS_TEAM_DOMAIN: ${{ secrets.ACCESS_TEAM_DOMAIN }}
+      ACCESS_AUD: ${{ secrets.ACCESS_AUD }}
+      ZIKARON_CLIENTS: ${{ secrets.ZIKARON_CLIENTS }}
+      STAGING_URL: ${{ secrets.STAGING_URL }}

@@ -9,6 +9,11 @@ export { replaceBackendForTesting, Vault } from "./vault.ts";
 
 /** O webhook do GitHub, fora do Access, conferido pelo HMAC do segredo do webhook (ADR-0001 §1). */
 const WEBHOOK_PATH = "/webhooks/github";
+/**
+ * A conferência do deploy, também fora do Access: diz só o ambiente e o commit publicados, que o
+ * deploy passa como `--var`, sem ler a configuração nem o cofre.
+ */
+const HEALTH_PATH = "/health";
 const API_PREFIX = "/v1/";
 
 let fetcherForTesting: KeyFetcher | undefined;
@@ -92,6 +97,9 @@ export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
     if (request.method === "POST" && pathname === WEBHOOK_PATH) return receiveWebhook(request, env);
+    if (request.method === "GET" && pathname === HEALTH_PATH) {
+      return json(200, { status: "ok", environment: env.ZIKARON_ENV, commit: env.ZIKARON_COMMIT });
+    }
     // Tudo o mais passa pelo Access: a credencial escolhe o cliente, nunca o pedido.
     const client = await authenticate(request, env);
     if (client instanceof Response) return client;

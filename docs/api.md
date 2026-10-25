@@ -5,7 +5,9 @@ O Worker serve a memória por duas portas, as duas atrás do Cloudflare Access:
 - **`POST /mcp`**: um servidor MCP para os modelos. Tudo o que chega por aqui é do **canal de ferramenta** ([ADR-0001](adr/0001-identidade-e-confianca.md) §2).
 - **`POST /v1/*`**: uma API JSON pequena para o provedor de memória do Hermes. Tudo o que chega por aqui é do **canal do provedor**.
 
-Fica de fora do Access só o `POST /webhooks/github`, conferido pelo HMAC do segredo do webhook, que apenas pede uma sincronização.
+Ficam de fora do Access só:
+- o `POST /webhooks/github`, conferido pelo HMAC do segredo do webhook, que apenas pede uma sincronização;
+- o `GET /health`, que responde `{"status":"ok","environment":"<ambiente>","commit":"<sha>"}` e nada mais, sem ler a configuração nem o cofre: é a conferência do deploy ([staging.md](staging.md), [producao.md](producao.md)).
 
 O canal é um teto, não uma prova: a mesma credencial alcança as duas portas. Quem diz o que vale é a configuração de cada cliente.
 

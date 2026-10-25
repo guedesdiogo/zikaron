@@ -68,7 +68,8 @@
       "ambiente": "staging",
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
-      "instrucao": "O endereço do zikaron-staging exatamente como o deploy o imprime, sem barra no fim."
+      "link": "https://dash.cloudflare.com/",
+      "instrucao": "https://zikaron-staging.<subdomínio>.workers.dev, sem barra no fim: o subdomínio workers.dev da conta aparece em Workers & Pages. Precisa existir antes do primeiro deploy, que sem ele não publica."
     },
     {
       "nome": "E2E_NOAH_CLIENT_ID",
@@ -132,6 +133,77 @@
       "origem": "humano",
       "link": "https://github.com/settings/personal-access-tokens/new",
       "instrucao": "Token fino com Contents: Read and write só no repositório zikaron-cofre-teste."
+    },
+    {
+      "nome": "CLOUDFLARE_API_TOKEN",
+      "destino": "gh",
+      "ambiente": "producao",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://dash.cloudflare.com/profile/api-tokens",
+      "instrucao": "Crie um token próprio da produção, com as mesmas permissões do token do staging (Account › Workers Scripts › Edit e Account › Account Settings › Read), na conta do Zikaron, e cole o valor."
+    },
+    {
+      "nome": "CLOUDFLARE_ACCOUNT_ID",
+      "destino": "gh",
+      "ambiente": "producao",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://dash.cloudflare.com/",
+      "instrucao": "O Account ID da conta do Zikaron (na página da conta, ao lado)."
+    },
+    {
+      "nome": "ZIKARON_GITHUB_APP_ID",
+      "destino": "gh",
+      "ambiente": "producao",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://github.com/settings/apps",
+      "instrucao": "O App ID do GitHub App zikaron."
+    },
+    {
+      "nome": "ZIKARON_GITHUB_INSTALLATION_ID",
+      "destino": "gh",
+      "ambiente": "producao",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://github.com/settings/installations",
+      "instrucao": "O número no fim do endereço da instalação do App zikaron no kelpie-vault. Só depois de o context-store do Kelpie parar (docs/producao.md)."
+    },
+    {
+      "nome": "ACCESS_TEAM_DOMAIN",
+      "destino": "gh",
+      "ambiente": "producao",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://one.dash.cloudflare.com/",
+      "instrucao": "https://<time>.cloudflareaccess.com, sem barra no fim."
+    },
+    {
+      "nome": "ACCESS_AUD",
+      "destino": "gh",
+      "ambiente": "producao",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://one.dash.cloudflare.com/",
+      "instrucao": "Access › Applications › a aplicação do zikaron (produção) › o Application Audience (AUD) Tag."
+    },
+    {
+      "nome": "ZIKARON_CLIENTS",
+      "destino": "gh",
+      "ambiente": "producao",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "instrucao": "O JSON de docs/api.md, com os Client IDs dos service tokens noah, alan e mac e as flags do ADR-0001 §7, numa linha."
+    },
+    {
+      "nome": "PRODUCAO_URL",
+      "destino": "gh",
+      "ambiente": "producao",
+      "repo": "guedesdiogo/zikaron",
+      "origem": "humano",
+      "link": "https://dash.cloudflare.com/",
+      "instrucao": "https://zikaron.<subdomínio>.workers.dev, sem barra no fim: o subdomínio workers.dev da conta aparece em Workers & Pages. Precisa existir antes da primeira release, que sem ele não publica."
     }
   ]
 }
