@@ -320,6 +320,85 @@ describe("o arquivo das tarefas", () => {
   });
 });
 
+describe("o arquivo das tarefas: o que a revisão do PR #18 pediu", () => {
+  it("uma tarefa cuja versão é um merge com a edição do dono não é arquivada", async () => {
+    const backend = vaultWith();
+    const stub = vault("ciclo-merge-dono");
+    await dueIn(stub, true);
+    const path = await written(stub, "kelpie", TOOL_AGENT, {
+      title: "Trocar o filtro",
+      body: "Trocar o filtro da água.\n\nComprar o filtro novo.",
+      kind: "task",
+      status: "open",
+    });
+    await runDurableObjectAlarm(stub);
+    const version = ((await stub.readNote("kelpie", path, {})) as { version: string }).version;
+    // O Kelpie encerra a tarefa enquanto o dono, no Obsidian, acrescenta uma linha no fim.
+    const closed = await stub.writeNote("kelpie", TOOL_AGENT, {
+      title: "Trocar o filtro",
+      body: "Trocar o filtro da água.\n\nComprar o filtro novo.",
+      kind: "task",
+      status: "done",
+      path,
+      version,
+    });
+    expect(closed).toMatchObject({ ok: true });
+    backend.push({ [path]: `${backend.files()[path] ?? ""}\nO filtro é o de 10 polegadas.\n` });
+    await runDurableObjectAlarm(stub);
+    await runDurableObjectAlarm(stub);
+    expect(await rows(stub, "SELECT count(*) AS n FROM owner_merges")).toEqual([{ n: 1 }]);
+    const merged = backend.files()[path] ?? "";
+    expect(merged).toContain("status: done");
+    expect(merged).toContain("10 polegadas");
+    await dueIn(stub, false);
+    await twice(stub);
+    expect(backend.files()[path]).toBe(merged);
+    expect(await rows(stub, "SELECT count(*) AS n FROM archived_tasks")).toEqual([{ n: 0 }]);
+    expect(report(backend)).toContain("Tarefas do dono para arquivar");
+  });
+
+  it("o arquivo leva o level adiante, também o explicit de quem perdeu o ownerClaims", async () => {
+    const backend = vaultWith();
+    const stub = vault("ciclo-level");
+    await dueIn(stub, true);
+    const path = await written(stub, "noah", PROVIDER_OWNER, {
+      title: "Pagar a conta de luz",
+      body: "Pagar a conta de luz.",
+      kind: "task",
+      status: "done",
+    });
+    await runDurableObjectAlarm(stub);
+    expect(backend.files()[path]).toContain("level: explicit");
+    const original = env.ZIKARON_CLIENTS;
+    const revoked = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(JSON.parse(original) as Record<string, Record<string, unknown>>).map(
+          ([id, client]) => [
+            id,
+            client.name === "noah" ? { ...client, ownerClaims: false } : client,
+          ],
+        ),
+      ),
+    );
+    try {
+      await runInDurableObject(stub, (instance) => {
+        (instance as unknown as { env: { ZIKARON_CLIENTS: string } }).env.ZIKARON_CLIENTS = revoked;
+      });
+      await dueIn(stub, false);
+      await twice(stub);
+      const archived = backend.files()[path] ?? "";
+      expect(archived).toContain("archived: true");
+      expect(archived).toContain("level: explicit");
+      expect(archived).toContain("source: owner");
+    } finally {
+      await runInDurableObject(stub, (instance) => {
+        (instance as unknown as { env: { ZIKARON_CLIENTS: string } }).env.ZIKARON_CLIENTS =
+          original;
+      });
+    }
+  });
+});
+
 describe("o relatório", () => {
   it("lista o que o plano diz, só com links, e nada de nota nos logs", async () => {
     const ana = "memory/people/ana.md";
