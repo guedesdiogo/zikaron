@@ -33,7 +33,7 @@ describe("Vault forget", () => {
           "INSERT INTO conflicts (client, path, content, reason, at) VALUES ('alfa', ?, 'x', 'owner_won', 1)",
           path,
         );
-        // A marca com o texto que o arquivo terá depois do push: a poda do sync só leva marcas velhas.
+        // The mark with the file's text after the push: the sync's pruning only takes stale marks.
         state.storage.sql.exec(
           "INSERT INTO owner_merges (path, content) VALUES (?, ?)",
           path,
@@ -41,7 +41,7 @@ describe("Vault forget", () => {
         );
         state.storage.sql.exec("INSERT INTO authored (path, blob_sha) VALUES (?, 'sha')", path);
       }
-      // Uma retenção cujo arquivo já mudou: nada mais a mostra.
+      // A hold whose file has already changed: nothing shows it anymore.
       state.storage.sql.exec(
         "INSERT INTO held (path, content, previous, at) VALUES (?, 'x', NULL, 1)",
         ana,
@@ -58,7 +58,7 @@ describe("Vault forget", () => {
     expect(await stub.forget([ana])).toEqual({ ok: true, forgotten: 5, stillInVault: [ana] });
     const lines = JSON.stringify(logged.mock.calls);
     logged.mockRestore();
-    // O log só leva contagens, nunca os caminhos.
+    // The log carries only counts, never the paths.
     expect(lines).toContain("forgot erased content");
     expect(lines).not.toContain("ana");
 
@@ -80,7 +80,7 @@ describe("Vault forget", () => {
     expect(await sql(`SELECT body FROM versions WHERE path = '${bia}'`)).toEqual([
       { body: expect.stringContaining("Nova.") },
     ]);
-    // A gravação na fila que nomeava o caminho foi junto.
+    // The queued write that named the path went with it.
     expect(await stub.read(ana)).toBe(clean);
     // The rebuilt index stands at the head, so the next alarm doesn't index it all over again.
     await runDurableObjectAlarm(stub);

@@ -5,12 +5,12 @@ import { describe, expect, it, vi } from "vitest";
 import worker, { replaceBackendForTesting } from "../src/index.ts";
 import { VAULT_NAME } from "../src/vault.ts";
 
-/** Um pedido como o Worker o recebe, com as propriedades `cf` do Cloudflare. */
+/** A request as the Worker receives it, with Cloudflare's `cf` properties. */
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 
 const SECRET = "webhook-secret-for-tests";
 
-/** Um cofre com README, como um de verdade. */
+/** A vault with a README, like a real one. */
 function vaultWith(files: Record<string, string>): FakeVaultBackend {
   const backend = new FakeVaultBackend({ "README.md": "# Vault", ...files });
   replaceBackendForTesting(backend);
@@ -27,7 +27,7 @@ async function rows(stub: ReturnType<typeof vault>, sql: string) {
   return runInDurableObject(stub, (_instance, state) => state.storage.sql.exec(sql).toArray());
 }
 
-/** O corpo de cada nota atual no índice da memória, por caminho. */
+/** The body of each current note in the memory index, by path. */
 async function indexed(stub: ReturnType<typeof vault>) {
   const current = (await rows(
     stub,
@@ -48,7 +48,7 @@ async function signed(body: string): Promise<string> {
   return `sha256=${Array.from(new Uint8Array(mac), (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
-/** Uma entrega do webhook do GitHub ao Worker. */
+/** A GitHub webhook delivery to the Worker. */
 function delivery(event: string, signature: string, body: string) {
   return new IncomingRequest("https://zikaron.test/webhooks/github", {
     method: "POST",
@@ -121,7 +121,7 @@ describe("Vault", () => {
     const stub = vault("reconcile");
     expect(await stub.read(path)).toBe("# Trip\n\nIn May.\n");
     backend.push({ [path]: "# Trip\n\nIn June.\n" });
-    // A reconciliação é o alarme já armado, a quinze minutos.
+    // The reconcile is the alarm already set, fifteen minutes away.
     expect(await runDurableObjectAlarm(stub)).toBe(true);
     expect(await stub.read(path)).toBe("# Trip\n\nIn June.\n");
     expect((await indexed(stub))[path]).toContain("In June.");
@@ -177,7 +177,7 @@ describe("Vault", () => {
     // Its own commit comes back through the webhook and changes nothing.
     expect(await rows(stub, "SELECT * FROM queue")).toEqual([]);
     expect(await stub.read("memory/people/ana.md")).toBe("# Ana");
-    // O índice vê o que foi comitado.
+    // The index sees what was committed.
     expect(await indexed(stub)).toMatchObject({
       "memory/people/ana.md": expect.any(String),
       "knowledge/trip.md": expect.any(String),
@@ -279,7 +279,7 @@ describe("Vault", () => {
     const commit = backend.commit.bind(backend);
     let pushes = 1;
     backend.commit = async (request) => {
-      // O dono empurra entre o sync do servidor e o commit dele.
+      // The owner pushes between the server's sync and its commit.
       if (pushes > 0) {
         pushes -= 1;
         backend.push({ "knowledge/owner.md": "# Owner, edited" });
@@ -347,7 +347,7 @@ describe("Vault", () => {
     // The owner's file is left as it is, without a commit of its own.
     const committed = backend.commitRequests.flatMap((request) => request.writes);
     expect(committed.map((write) => write.path)).toEqual(["memory/people/ana.md"]);
-    // Só o relatório diário espera, a rotina do próprio servidor.
+    // Only the daily report waits, the server's own routine.
     expect(await rows(stub, "SELECT count(*) AS n FROM queue WHERE client != 'zikaron'")).toEqual([
       { n: 0 },
     ]);
@@ -422,7 +422,7 @@ describe("Vault", () => {
     ]);
     // A held write doesn't keep the alarm flushing every few seconds.
     expect(await alarmAt(stub)).toBeGreaterThan(Date.now() + 60_000);
-    // O índice fica com a versão de antes do conflito, nunca com os marcadores.
+    // The index keeps the version from before the conflict, never the markers.
     expect((await indexed(stub))["memory/people/ana.md"]).toContain("Mora em Lisboa.");
 
     // The owner cleans it up: the hold ends, and the queued write merges into the clean file.
@@ -451,7 +451,7 @@ describe("Vault", () => {
     expect(backend.commitRequests).toEqual([]);
     expect(await stub.held()).toHaveLength(1);
 
-    // O dono resolve: a gravação entra por cima da resolução.
+    // The owner resolves it: the write goes in on top of the resolution.
     backend.push({ "memory/people/ana.md": "# Ana\n\nMora no Porto.\n\nGosta de café.\n" });
     await runDurableObjectAlarm(stub);
     expect(backend.files()["memory/people/ana.md"]).toBe(
@@ -831,7 +831,7 @@ describe("Vault", () => {
     vaultWith({ "memory/people/ana.md": "# Ana\n\nMora em Lisboa.\n" });
     const stub = vault("catch-up");
     await stub.read("README.md");
-    // Como depois de uma queda entre um movimento do head e a indexação.
+    // As after a crash between a head move and the indexing.
     await runInDurableObject(stub, (_instance, state) => {
       state.storage.sql.exec("DELETE FROM state WHERE key = 'index_head'");
     });
@@ -846,7 +846,7 @@ describe("Vault", () => {
     await stub.read("README.md");
     await runInDurableObject(stub, (_instance, state) => {
       state.storage.sql.exec("DELETE FROM state WHERE key = 'index_head'");
-      // Sem as tabelas do índice, a reconstrução falha.
+      // Without the index tables, the rebuild fails.
       state.storage.sql.exec("DROP TABLE versions");
     });
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});

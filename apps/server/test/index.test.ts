@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import worker, { MAX_WEBHOOK_BYTES, replaceBackendForTesting } from "../src/index.ts";
 import { VAULT_NAME, type VaultEnv } from "../src/vault.ts";
 
-/** Um pedido como o Worker o recebe, com as propriedades `cf` do Cloudflare. */
+/** A request as the Worker receives it, with Cloudflare's `cf` properties. */
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 
 const SECRET = "webhook-secret-for-tests";
@@ -23,7 +23,7 @@ async function signed(body: string, secret = SECRET): Promise<string> {
   return `sha256=${Array.from(new Uint8Array(mac), (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
-/** Uma entrega do webhook do GitHub; `signature` nula deixa o cabeçalho de fora. */
+/** A GitHub webhook delivery; a null `signature` leaves the header out. */
 function delivery(event: string | null, signature: string | null, body: string) {
   const headers = new Headers();
   if (event !== null) headers.set("X-GitHub-Event", event);
@@ -34,7 +34,7 @@ function delivery(event: string | null, signature: string | null, body: string) 
 const stub = () => env.VAULT.getByName(VAULT_NAME);
 const alarmAt = () => runInDurableObject(stub(), (_instance, state) => state.storage.getAlarm());
 
-/** Um cofre configurado, sincronizado uma vez, cujo próximo alarme é a reconciliação, a minutos. */
+/** A configured vault, synced once, whose next alarm is the reconciliation, minutes away. */
 async function syncedVault(): Promise<number> {
   replaceBackendForTesting(new FakeVaultBackend({ "README.md": "# Vault" }));
   await stub().read("README.md");
@@ -52,10 +52,10 @@ describe("the Worker's webhook route", () => {
       const response = await worker.fetch(delivery("push", signature, push), env);
       expect(response.status, String(signature)).toBe(401);
     }
-    // Um corpo mudado depois de assinado.
+    // A body changed after it was signed.
     const tampered = await worker.fetch(delivery("push", await signed(push), `${push} `), env);
     expect(tampered.status).toBe(401);
-    // Sem o segredo, nenhuma assinatura confere.
+    // Without the secret, no signature matches.
     const { GITHUB_WEBHOOK_SECRET: _secret, ...unset } = env as VaultEnv;
     const missing = await worker.fetch(delivery("push", await signed(push), push), unset);
     expect(missing.status).toBe(401);
@@ -72,7 +72,7 @@ describe("the Worker's webhook route", () => {
     await syncedVault();
     const response = await worker.fetch(delivery("push", await signed(push), push), env);
     expect(response.status).toBe(202);
-    // A sincronização vem a um segundo, no máximo.
+    // The sync comes within a second, at most.
     expect(((await alarmAt()) ?? Number.POSITIVE_INFINITY) - Date.now()).toBeLessThanOrEqual(1_000);
   });
 
@@ -109,12 +109,12 @@ describe("the Worker's webhook route", () => {
   });
 });
 
-describe("o /health", () => {
+describe("the /health route", () => {
   const health = (method = "GET", path = "/health") =>
     new IncomingRequest(`${URL_BASE}${path}`, method === "GET" ? {} : { method, body: "{}" });
 
-  it("responde, sem credencial, só o status, o ambiente e o commit publicados", async () => {
-    // Fora do deploy, os dois vêm vazios do wrangler.jsonc.
+  it("answers, with no credential, only the status and the deployed environment and commit", async () => {
+    // Outside a deploy, both come empty from wrangler.jsonc.
     const local = await worker.fetch(health(), env);
     expect(local.status).toBe(200);
     expect(local.headers.get("Content-Type")).toContain("application/json");
@@ -130,7 +130,7 @@ describe("o /health", () => {
     });
   });
 
-  it("não lê a configuração dos clientes, o Access nem o cofre", async () => {
+  it("reads neither the client configuration, nor Access, nor the vault", async () => {
     const { VAULT: _vault, ...rest } = env as VaultEnv;
     const broken = {
       ...rest,
@@ -143,7 +143,7 @@ describe("o /health", () => {
     expect(await response.json()).toStrictEqual({ status: "ok", environment: "", commit: "" });
   });
 
-  it("deixa os outros métodos e os caminhos parecidos para o Access, que os recusa sem credencial", async () => {
+  it("leaves other methods and look-alike paths to Access, which refuses them without a credential", async () => {
     for (const request of [
       health("POST"),
       health("PUT"),
@@ -159,8 +159,8 @@ describe("o /health", () => {
   });
 });
 
-describe("o limite do corpo do webhook", () => {
-  it("recusa um corpo grande demais antes de conferir a assinatura", async () => {
+describe("the webhook body limit", () => {
+  it("refuses a body that is too big before checking the signature", async () => {
     const big = "x".repeat(MAX_WEBHOOK_BYTES + 1);
     const declared = new IncomingRequest(`${URL_BASE}/webhooks/github`, {
       method: "POST",
@@ -168,7 +168,7 @@ describe("o limite do corpo do webhook", () => {
       body: big,
     });
     expect((await worker.fetch(declared, env as VaultEnv)).status).toBe(413);
-    // Sem Content-Length, a leitura para no limite.
+    // Without Content-Length, reading stops at the limit.
     const streamed = delivery("push", await signed(big), big);
     streamed.headers.delete("Content-Length");
     expect((await worker.fetch(streamed, env as VaultEnv)).status).toBe(413);

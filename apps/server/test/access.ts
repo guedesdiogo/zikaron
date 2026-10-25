@@ -1,5 +1,5 @@
-// O Access de teste: uma chave RSA gerada aqui, a busca das chaves trocada pela do teste, e JWTs de
-// service token emitidos para os Client IDs sintéticos de vitest.config.ts. Nada vem de fora.
+// The test Access: an RSA key generated here, the key fetch swapped for the test's, and service
+// token JWTs issued for the synthetic Client IDs in vitest.config.ts. Nothing comes from outside.
 import { runDurableObjectAlarm } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { FakeVaultBackend } from "@zikaron/vault/fake";
@@ -13,7 +13,7 @@ export const TEAM_DOMAIN = "https://time-teste.cloudflareaccess.com";
 export const AUD = "aud-teste";
 export const URL_BASE = "https://zikaron.test";
 
-/** O Client ID do service token de cada cliente da configuração de teste. */
+/** The service token Client ID of each client in the test configuration. */
 export const IDS = {
   noah: "id-do-noah.access",
   alan: "id-do-alan.access",
@@ -46,7 +46,7 @@ async function signingPair(): Promise<CryptoKeyPair> {
   return pair;
 }
 
-/** Põe a chave pública do teste no lugar das chaves do time. `setup.ts` desfaz depois de cada teste. */
+/** Puts the test's public key in place of the team's keys. `setup.ts` undoes it after each test. */
 export async function useAccess(): Promise<void> {
   const jwk = (await crypto.subtle.exportKey("jwk", (await signingPair()).publicKey)) as JsonWebKey;
   replaceKeyFetcherForTesting(async (url) => {
@@ -56,7 +56,7 @@ export async function useAccess(): Promise<void> {
   });
 }
 
-/** Um JWT de service token do Access para um Client ID, válido agora. */
+/** An Access service token JWT for a Client ID, valid now. */
 export async function tokenFor(clientId: string): Promise<string> {
   const seconds = Math.floor(Date.now() / 1000);
   const header = jsonPart({ alg: "RS256", kid: "k1", typ: "JWT" });
@@ -77,7 +77,7 @@ export async function tokenFor(clientId: string): Promise<string> {
   return `${header}.${payload}.${base64Url(new Uint8Array(signature))}`;
 }
 
-/** Um pedido ao Worker, como o Access o entrega: com o JWT do cliente, ou sem nenhum. */
+/** A request to the Worker, as Access delivers it: with the client's JWT, or with none. */
 export async function send(
   client: ClientName | null,
   path: string,
@@ -94,7 +94,7 @@ export async function send(
   return worker.fetch(request, workerEnv);
 }
 
-/** Uma chamada a `/v1/<rota>`: o status e o corpo JSON. */
+/** A call to `/v1/<route>`: the status and the JSON body. */
 export async function v1(
   client: ClientName,
   route: string,
@@ -106,7 +106,7 @@ export async function v1(
 
 let rpcId = 0;
 
-/** Uma mensagem JSON-RPC a `/mcp`. */
+/** A JSON-RPC message to `/mcp`. */
 export async function mcp(
   client: ClientName,
   message: Record<string, unknown>,
@@ -122,7 +122,7 @@ export async function mcp(
   };
 }
 
-/** Uma ferramenta pelo MCP: o texto do resultado e se ela falhou. */
+/** A tool over MCP: the result's text and whether it failed. */
 export async function tool(
   client: ClientName,
   name: string,
@@ -139,17 +139,17 @@ export async function tool(
   return { text: result.content.map((part) => part.text).join("\n"), isError: !!result.isError };
 }
 
-/** Um cofre de teste com estes arquivos, atrás do Worker. */
+/** A test vault with these files, behind the Worker. */
 export function vaultWith(files: Record<string, string> = {}): FakeVaultBackend {
   const backend = new FakeVaultBackend({ "README.md": "# Vault", ...files });
   replaceBackendForTesting(backend);
   return backend;
 }
 
-/** Comita o que está na fila e sincroniza: o índice passa a ver as gravações. */
+/** Commits what is in the queue and syncs: the index then sees the writes. */
 export async function flush(): Promise<void> {
   await runDurableObjectAlarm(env.VAULT.getByName(VAULT_NAME));
 }
 
-/** O stub do cofre que as rotas usam. */
+/** The vault stub the routes use. */
 export const vaultStub = () => env.VAULT.getByName(VAULT_NAME);

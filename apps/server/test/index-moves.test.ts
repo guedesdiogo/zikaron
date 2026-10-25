@@ -1,5 +1,5 @@
-// O índice anda junto com cada sync e cada commit, sem depender do catch-up; segue um head que
-// voltou atrás; e as duas correções da revisão do PR #10.
+// The index moves along with each sync and each commit, without relying on the catch-up; it follows
+// a head that went back; and the two fixes from the PR #10 review.
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { FakeVaultBackend } from "@zikaron/vault/fake";
@@ -18,7 +18,7 @@ async function rows(stub: ReturnType<typeof vault>, sql: string) {
   return runInDurableObject(stub, (_instance, state) => state.storage.sql.exec(sql).toArray());
 }
 
-/** O head do cofre e o head a que o índice chegou. */
+/** The vault's head and the head the index has reached. */
 async function heads(stub: ReturnType<typeof vault>) {
   return runInDurableObject(stub, (_instance, state) => {
     const value = (key: string) =>
@@ -37,8 +37,8 @@ async function currentPaths(stub: ReturnType<typeof vault>): Promise<string[]> {
   return found.map((row) => row.path);
 }
 
-describe("o índice segue o cofre", () => {
-  it("anda com cada commit e cada sync, antes de qualquer catch-up", async () => {
+describe("the index follows the vault", () => {
+  it("moves with each commit and each sync, before any catch-up", async () => {
     const backend = vaultWith({ "memory/people/ana.md": "# Ana\n\nLisboa.\n" });
     const stub = vault("indice-anda");
     await stub.read("README.md");
@@ -47,7 +47,7 @@ describe("o índice segue o cofre", () => {
       [{ path: "memory/people/bruno.md", content: "# Bruno\n\nSócio.\n" }],
       "x",
     );
-    // O alarme faz o catch-up antes do trabalho do GitHub; depois dele, só o commit move o índice.
+    // The alarm catches up before the GitHub work; after that, only the commit moves the index.
     await runDurableObjectAlarm(stub);
     let at = await heads(stub);
     expect(at.index).toBe(at.head);
@@ -61,7 +61,7 @@ describe("o índice segue o cofre", () => {
     expect(await currentPaths(stub)).not.toContain("memory/people/ana.md");
   });
 
-  it("segue um head que mudou depois de o índice recomeçar", async () => {
+  it("follows a head that changed after the index started over", async () => {
     const backend = vaultWith({ "memory/people/ana.md": "# Ana\n" });
     const stub = vault("indice-recomeca");
     await stub.read("README.md");
@@ -77,7 +77,7 @@ describe("o índice segue o cofre", () => {
     expect(await currentPaths(stub)).toEqual(["memory/people/ana.md", "memory/people/carla.md"]);
   });
 
-  it("esquece uma nota quando o dono volta o branch para antes dela", async () => {
+  it("forgets a note when the owner moves the branch back to before it", async () => {
     const backend = vaultWith({ "memory/people/ana.md": "# Ana\n" });
     const stub = vault("indice-rewind");
     await stub.read("README.md");
@@ -95,8 +95,8 @@ describe("o índice segue o cofre", () => {
   });
 });
 
-describe("as correções da revisão", () => {
-  it("uma gravação feita antes do primeiro sync parte do arquivo que já está no cofre", async () => {
+describe("the review fixes", () => {
+  it("a write made before the first sync starts from the file already in the vault", async () => {
     const backend = vaultWith({ "memory/people/ana.md": "# Ana\n\nLisboa.\n" });
     const stub = vault("grava-antes-do-sync");
     expect(
@@ -111,7 +111,7 @@ describe("as correções da revisão", () => {
     expect(await rows(stub, "SELECT count(*) AS n FROM conflicts")).toEqual([{ n: 0 }]);
   });
 
-  it("a marca de merge sai com a versão dela", async () => {
+  it("a merge mark goes with its version", async () => {
     const ana = "memory/people/ana.md";
     const base = "# Ana\n\nMora em Lisboa.\n\nGosta de café.\n";
     const backend = vaultWith({ [ana]: base });

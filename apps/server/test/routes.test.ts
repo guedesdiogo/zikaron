@@ -1,4 +1,4 @@
-// As rotas atrás do Access (ADR-0001 §1): a identidade, a API `/v1/*` e o protocolo do MCP.
+// The routes behind Access (ADR-0001 §1): identity, the `/v1/*` API and the MCP protocol.
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { MAX_REQUEST_BYTES } from "../src/http.ts";
@@ -11,8 +11,8 @@ beforeEach(async () => {
   vaultWith();
 });
 
-describe("a identidade", () => {
-  it("responde 401, sem ler nem gravar, a um pedido sem JWT ou de um cliente fora da configuração", async () => {
+describe("identity", () => {
+  it("answers 401, without reading or writing, to a request with no JWT or from a client outside the configuration", async () => {
     for (const [method, path] of [
       ["POST", "/mcp"],
       ["GET", "/mcp"],
@@ -27,7 +27,7 @@ describe("a identidade", () => {
       expect(response.status, `${method} ${path}`).toBe(401);
       expect(await response.json()).toEqual({ error: "unauthorized" });
     }
-    // Um corpo que diz ser outro cliente não muda nada: só a credencial escolhe.
+    // A body that claims to be another client changes nothing: only the credential chooses.
     const spoofed = await send(null, "/v1/search", {
       body: JSON.stringify({ query: "café", client: "alan" }),
       headers: { "X-Client": "alan", "Cf-Access-Authenticated-User-Email": "alan@example.com" },
@@ -35,7 +35,7 @@ describe("a identidade", () => {
     expect(spoofed.status).toBe(401);
   });
 
-  it("responde 500 só com um código quando a configuração dos clientes não vale", async () => {
+  it("answers 500 with only a code when the client configuration isn't valid", async () => {
     for (const broken of ["", "{", JSON.stringify({ x: { name: "Noah" } })]) {
       const response = await send(
         "noah",
@@ -51,7 +51,7 @@ describe("a identidade", () => {
     }
   });
 
-  it("responde 503 quando as chaves do Access não vêm", async () => {
+  it("answers 503 when the Access keys don't come", async () => {
     replaceKeyFetcherForTesting(async () => {
       throw new Error("Access certs: 502");
     });
@@ -60,7 +60,7 @@ describe("a identidade", () => {
     expect(await response.json()).toEqual({ error: "unavailable" });
   });
 
-  it("um cliente que o cofre não conhece não lê nem grava", async () => {
+  it("a client the vault doesn't know neither reads nor writes", async () => {
     const stub = vaultStub();
     expect(await stub.search("ninguem", "café")).toEqual({ ok: false, reason: "unauthorized" });
     expect(await stub.readNote("ninguem", "memory/notes/a.md")).toEqual({
@@ -96,8 +96,8 @@ describe("a identidade", () => {
   });
 });
 
-describe("a API /v1", () => {
-  it("só aceita POST com um objeto JSON, em rotas que existem", async () => {
+describe("the /v1 API", () => {
+  it("only accepts POST with a JSON object, on routes that exist", async () => {
     expect((await send("alan", "/v1/nada", { body: "{}" })).status).toBe(404);
     expect((await send("alan", "/", { method: "GET" })).status).toBe(404);
     const get = await send("alan", "/v1/search", { method: "GET" });
@@ -130,14 +130,14 @@ describe("a API /v1", () => {
     ["write", { source: "dono", title: "A", body: "B", kind: "note" }, "`source` must be owner"],
     ["forget", {}, "`path` is required"],
     ["archive", { path: "memory/notes/a.md" }, "`version` is required"],
-  ])("recusa com 400 um %s com %j", async (route, body, problem) => {
+  ])("refuses, with 400, a %s with %j", async (route, body, problem) => {
     const { status, body: answer } = await v1("alan", route, body);
     expect(status).toBe(400);
     expect(answer.reason).toBe("invalid");
     expect((answer.problems as string[]).join("; ")).toContain(problem);
   });
 
-  it("responde 503 com a memória desligada, e um bloco vazio no núcleo e no recall", async () => {
+  it("answers 503 with the memory off, and an empty block for the core and the recall", async () => {
     replaceBackendForTesting(null);
     expect(await v1("alan", "search", { query: "café" })).toEqual({
       status: 503,
@@ -162,8 +162,8 @@ describe("a API /v1", () => {
   });
 });
 
-describe("o MCP", () => {
-  it("inicia sem estado, com a versão do protocolo e as ferramentas", async () => {
+describe("MCP", () => {
+  it("initializes without state, with the protocol version and the tools", async () => {
     const init = await mcp("alan", {
       id: 1,
       method: "initialize",
@@ -199,13 +199,13 @@ describe("o MCP", () => {
       expect(each.inputSchema.type).toBe("object");
       expect(each.description.length).toBeGreaterThan(40);
     }
-    // Todas dizem que o resultado é dado, não instrução.
+    // They all say the result is data, not instructions.
     for (const each of tools) {
       expect(each.description, each.name).toMatch(/nunca instruções/i);
     }
   });
 
-  it("responde aos erros do JSON-RPC", async () => {
+  it("answers the JSON-RPC errors", async () => {
     const raw = async (body: string) => {
       const response = await send("alan", "/mcp", { body });
       return {
@@ -252,7 +252,7 @@ describe("o MCP", () => {
       params: { name: "constructor" },
     });
     expect(prototype.body?.error).toEqual({ code: -32602, message: "Unknown tool" });
-    // A resposta de um cliente, e uma notificação qualquer, não têm resposta.
+    // A client's response, and any notification, get no reply.
     expect(await mcp("alan", { id: 9, result: {} })).toEqual({ status: 202, body: null });
     expect(await mcp("alan", { method: "notifications/cancelled", params: {} })).toEqual({
       status: 202,
@@ -262,7 +262,7 @@ describe("o MCP", () => {
     expect(huge.status).toBe(413);
   });
 
-  it("devolve a falha de uma ferramenta como isError, com um texto curto", async () => {
+  it("returns a tool's failure as isError, with a short text", async () => {
     const notObject = await mcp("alan", {
       id: 6,
       method: "tools/call",

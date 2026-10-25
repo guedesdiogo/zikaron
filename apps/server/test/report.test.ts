@@ -1,5 +1,5 @@
-// A página do relatório diário (#17): as regras do relatório do Kelpie para títulos e caminhos, os
-// limites das listas, e nenhuma página sem achados.
+// The daily report page (#17): the Kelpie report's rules for titles and paths, the list limits,
+// and no page without findings.
 import { describe, expect, it } from "vitest";
 import { memoryReport, type ReportFindings } from "../src/report.ts";
 
@@ -14,12 +14,12 @@ const NONE: ReportFindings = {
 };
 const AT = Date.parse("2026-10-20T10:00:00Z");
 
-describe("a página do relatório", () => {
-  it("não existe sem achados", () => {
+describe("the report page", () => {
+  it("doesn't exist without findings", () => {
     expect(memoryReport(NONE)).toBeNull();
   });
 
-  it("um título ou um caminho não saem do link, e um caminho removido vira código", () => {
+  it("a title or a path doesn't break out of the link, and a removed path becomes code", () => {
     const page =
       memoryReport({
         ...NONE,
@@ -56,7 +56,7 @@ describe("a página do relatório", () => {
     for (const bad of ["<", ">", "\u202e", "\\", "!y"]) expect(page).not.toContain(bad);
   });
 
-  it("corta as listas longas e os grupos grandes, dizendo quantas faltam", () => {
+  it("cuts long lists and big groups, saying how many are left", () => {
     const notes = Array.from({ length: 205 }, (_, i) => ({
       path: `memory/tasks/t${String(i).padStart(3, "0")}.md`,
       title: `T${i}`,
@@ -76,7 +76,7 @@ describe("a página do relatório", () => {
     expect(page).toContain("### noah\n\n- [[memory/tasks/t000|T0]]: 2026-10-20");
   });
 
-  it("mostra quem mudou cada nota, todos os clientes, a mais recente primeiro", () => {
+  it("shows who changed each note, every client, the most recent first", () => {
     const page =
       memoryReport({
         ...NONE,

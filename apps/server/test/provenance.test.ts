@@ -17,7 +17,7 @@ async function rows(stub: ReturnType<typeof vault>, sql: string) {
   return runInDurableObject(stub, (_instance, state) => state.storage.sql.exec(sql).toArray());
 }
 
-/** Os caminhos cuja versão no cofre veio de um commit do próprio servidor. */
+/** The paths whose version in the vault came from a commit by the server itself. */
 async function byServer(stub: ReturnType<typeof vault>): Promise<string[]> {
   const found = (await rows(
     stub,
@@ -75,12 +75,12 @@ describe("Vault provenance", () => {
       { path: ana, content: merged },
     ]);
 
-    // Uma gravação seguinte do servidor substitui o merge, e a marca sai.
+    // A later write by the server replaces the merge, and the mark goes.
     await stub.write("alfa", [{ path: ana, content: `${merged}\nTem um gato.\n` }], "y");
     await runDurableObjectAlarm(stub);
     expect(await rows(stub, "SELECT count(*) AS n FROM owner_merges")).toEqual([{ n: 0 }]);
 
-    // Uma remoção também tira a marca.
+    // A removal takes the mark away too.
     const current = (await stub.read(ana)) ?? "";
     await stub.write("alfa", [{ path: ana, content: current.replace("chá", "mate") }], "z");
     backend.push({ [ana]: current.replace("Braga", "Faro") });
@@ -89,7 +89,7 @@ describe("Vault provenance", () => {
     await stub.write("alfa", [{ path: ana, content: null }], "w");
     await runDurableObjectAlarm(stub);
     expect(await rows(stub, "SELECT count(*) AS n FROM owner_merges")).toEqual([{ n: 0 }]);
-    // O relatório diário, que lista a nota do dono mudada, é do servidor.
+    // The daily report, which lists the owner's changed note, is the server's.
     expect(
       await rows(stub, "SELECT count(*) AS n FROM authored WHERE path != 'memory/_lint/report.md'"),
     ).toEqual([{ n: 0 }]);
@@ -133,7 +133,7 @@ describe("Vault provenance", () => {
     expect(await stub.read("memory/notes/a.md")).toBeNull();
   });
 
-  it("o índice sabe o que o servidor escreveu, e uma edição do dono volta a ser do dono", async () => {
+  it("the index knows what the server wrote, and an owner's edit makes the note the owner's again", async () => {
     const backend = vaultWith({});
     const stub = vault("provenance-index");
     await stub.read("README.md");

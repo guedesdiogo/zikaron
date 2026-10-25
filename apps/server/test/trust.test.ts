@@ -1,5 +1,5 @@
-// O modelo de confiança do ADR-0001 de ponta a ponta, pelas rotas, com dados sintéticos: quem lê o
-// quê (§5), a regra de gravação (§4, emendada pelo ADR-0003) e o cercado do recall (§6).
+// The ADR-0001 trust model end to end, through the routes, with synthetic data: who reads what
+// (§5), the write rule (§4, amended by ADR-0003) and the recall fence (§6).
 import { beforeEach, describe, expect, it } from "vitest";
 import { flush, tool, useAccess, v1, vaultWith } from "./access.ts";
 
@@ -14,7 +14,7 @@ const searched = async (client: "noah" | "alan" | "mac" | "kelpie", query: strin
 const found = async (client: "noah" | "alan" | "mac" | "kelpie", query: string, extra = {}) =>
   (await searched(client, query, extra)).notes.map((note) => note.path);
 
-/** O caminho e a versão que uma gravação pelo MCP confirmou. */
+/** The path and the version that a write over MCP confirmed. */
 function writtenAt(text: string): { path: string; version: string } {
   const match = /^(?:Gravada|Já estava na memória): (\S+), versão ([0-9a-f]{12})\.$/.exec(text);
   if (match === null) throw new Error(`not a write: ${text}`);
@@ -23,8 +23,8 @@ function writtenAt(text: string): { path: string; version: string } {
 
 const NOT_FOUND = { status: 200, body: { ok: false, reason: "not_found" } };
 
-describe("a leitura (ADR-0001 §5)", () => {
-  it("uma nota de fora gravada pelo Noah nunca chega ao Alan, por nenhum caminho; ao Noah, sim", async () => {
+describe("reading (ADR-0001 §5)", () => {
+  it("an outside note written by Noah never reaches Alan, by any path; it does reach Noah", async () => {
     const backend = vaultWith();
     const written = await tool("noah", "memory_write", {
       title: "Reunião com a Ana",
@@ -35,7 +35,7 @@ describe("a leitura (ADR-0001 §5)", () => {
     });
     expect(written.isError).toBe(false);
     const { path } = writtenAt(written.text);
-    // O dono aponta para ela numa nota do perfil, e põe no perfil uma nota pendente vinda de fora.
+    // The owner links to it from a profile note, and adds a pending outside note to the profile.
     const profile = "memory/profile/agenda.md";
     const outside = "memory/profile/recado.md";
     backend.push({
@@ -45,7 +45,7 @@ describe("a leitura (ADR-0001 §5)", () => {
     });
     await flush();
 
-    // O Alan: nada, e a mesma resposta de uma nota que não existe.
+    // Alan: nothing, and the same answer as for a note that doesn't exist.
     expect(await found("alan", "reunião Ana quinta")).not.toContain(path);
     expect(await v1("alan", "read", { path })).toEqual(NOT_FOUND);
     expect(await v1("alan", "read", { path: "memory/notes/nao-existe.md" })).toEqual(NOT_FOUND);
@@ -67,7 +67,7 @@ describe("a leitura (ADR-0001 §5)", () => {
     const page = (await v1("alan", "read", { path: profile })).body;
     expect(page.ok).toBe(true);
     expect(page.text).not.toContain("Links:");
-    // Gravar por cima também responde como inexistente.
+    // Writing over it also answers as if it didn't exist.
     expect(
       (
         await v1("alan", "write", {
@@ -81,7 +81,7 @@ describe("a leitura (ADR-0001 §5)", () => {
       ).body,
     ).toEqual({ ok: false, reason: "not_found" });
 
-    // O Noah: tudo, cada nota com a origem.
+    // Noah: everything, each note with its origin.
     expect(await found("noah", "reunião Ana quinta")).toContain(path);
     expect((await v1("noah", "read", { path })).body.text).toContain(
       "origem: noah, de fora, pendente",
@@ -106,7 +106,7 @@ describe("a leitura (ADR-0001 §5)", () => {
     );
   });
 
-  it("o que o Noah grava como dito pelo dono, pelo provedor, chega ao Alan como do dono", async () => {
+  it("what Noah writes as said by the owner, through the provider, reaches Alan as the owner's", async () => {
     const backend = vaultWith();
     const { status, body } = await v1("noah", "write", {
       source: "owner",
@@ -131,7 +131,7 @@ describe("a leitura (ADR-0001 §5)", () => {
     expect(page.version).toBe((await searched("alan", "café açúcar")).notes[0]?.version);
   });
 
-  it("pelo MCP, o mesmo «dono disse» vira uma conclusão pendente, que o Alan não recebe", async () => {
+  it('over MCP, the same "owner said" becomes a pending conclusion, which Alan doesn\'t get', async () => {
     const backend = vaultWith();
     const written = await tool("noah", "memory_write", {
       source: "owner",
@@ -149,8 +149,8 @@ describe("a leitura (ADR-0001 §5)", () => {
   });
 });
 
-describe("a gravação (ADR-0001 §4)", () => {
-  it("uma rotina agendada não grava, nem arquiva, e nada é comitado", async () => {
+describe("writing (ADR-0001 §4)", () => {
+  it("a scheduled routine doesn't write or archive, and nothing is committed", async () => {
     const backend = vaultWith();
     const cron = { source: "owner", context: "cron", title: "Resumo", body: "Um resumo." };
     expect(await v1("noah", "write", { ...cron, kind: "note" })).toEqual({
@@ -174,7 +174,7 @@ describe("a gravação (ADR-0001 §4)", () => {
     expect(backend.commitRequests).toHaveLength(0);
   });
 
-  it("nenhum agente fixa uma nota", async () => {
+  it("no agent pins a note", async () => {
     const backend = vaultWith();
     const memory = { title: "Fixa", body: "Sempre.", kind: "note", pinned: true };
     expect((await v1("noah", "write", { source: "owner", ...memory })).body).toEqual({
@@ -188,7 +188,7 @@ describe("a gravação (ADR-0001 §4)", () => {
     expect(backend.commitRequests).toHaveLength(0);
   });
 
-  it("uma nota do dono só muda pela palavra do dono, pelo provedor de um cliente com ownerClaims", async () => {
+  it("an owner's note only changes on the owner's word, through the provider of a client with ownerClaims", async () => {
     const path = "memory/people/ana.md";
     const backend = vaultWith({ [path]: "# Ana\n\nMora em Lisboa.\n" });
     const version = (await v1("alan", "read", { path })).body.version as string;
@@ -196,12 +196,12 @@ describe("a gravação (ADR-0001 §4)", () => {
     expect((await tool("alan", "memory_write", { ...update, source: "agent" })).text).toContain(
       "Recusada (owners_note)",
     );
-    // Sem ownerClaims, nem pelo provedor.
+    // Without ownerClaims, not even through the provider.
     expect((await v1("alan", "write", { ...update, source: "owner" })).body).toEqual({
       ok: false,
       reason: "owners_note",
     });
-    // Pelo MCP, o «dono disse» do Noah é uma conclusão.
+    // Over MCP, Noah's "owner said" is a conclusion.
     expect((await tool("noah", "memory_write", { ...update, source: "owner" })).text).toContain(
       "Recusada (owners_note)",
     );
@@ -216,9 +216,9 @@ describe("a gravação (ADR-0001 §4)", () => {
     expect(backend.files()[path]).toContain("source: owner");
   });
 
-  it("quem grava por cima de uma nota contaminada passa a marca adiante", async () => {
+  it("whoever writes over a tainted note passes the mark on", async () => {
     const backend = vaultWith();
-    // O Alan grava algo lido de fora: nem ele o recebe de volta antes do «sim».
+    // Alan writes something read from outside: not even he gets it back before the "yes".
     const outside = await v1("alan", "write", {
       source: "external",
       title: "Promoção da loja",
@@ -228,7 +228,7 @@ describe("a gravação (ADR-0001 §4)", () => {
     const path = outside.body.path as string;
     await flush();
     expect(await v1("alan", "read", { path })).toEqual(NOT_FOUND);
-    // O Kelpie, que não é exposed nem privileged, vê as notas de quem não é exposed.
+    // Kelpie, neither exposed nor privileged, sees the notes of clients that aren't exposed.
     const seen = (await v1("kelpie", "read", { path })).body;
     expect(seen.text).toContain("origem: alan, de fora, pendente");
     const rewritten = await tool("kelpie", "memory_write", {
@@ -250,7 +250,7 @@ describe("a gravação (ADR-0001 §4)", () => {
     );
   });
 
-  it("uma nota igual a uma que o leitor não vê não é «já na memória»: vira outra nota", async () => {
+  it("a note equal to one the reader can't see isn't \"already in memory\": it becomes another note", async () => {
     vaultWith();
     const memory = { title: "Horário da academia", body: "A academia abre às seis.", kind: "note" };
     const first = await v1("noah", "write", { source: "external", ...memory });
@@ -259,14 +259,14 @@ describe("a gravação (ADR-0001 §4)", () => {
     expect(second.body).toMatchObject({ ok: true, action: "written" });
     expect(second.body.path).not.toBe(first.body.path);
     expect(second.body.path).toBe("memory/notes/horario-da-academia-2.md");
-    // Para quem vê, a mesma memória de novo não muda nada.
+    // For a client that sees it, the same memory again changes nothing.
     await flush();
     const again = (await v1("noah", "write", { source: "external", ...memory })).body;
     expect(again.action).toBe("unchanged");
     expect([first.body.path, second.body.path]).toContain(again.path);
   });
 
-  it("tira os segredos do título, do corpo, das entidades e da evidência", async () => {
+  it("strips secrets from the title, the body, the entities and the evidence", async () => {
     const backend = vaultWith();
     const { body } = await v1("noah", "write", {
       source: "owner",
@@ -286,18 +286,18 @@ describe("a gravação (ADR-0001 §4)", () => {
   });
 });
 
-describe("os commits", () => {
-  it("nunca nomeiam a nota, nem no título nem no corpo, sozinhos ou num lote", async () => {
+describe("the commits", () => {
+  it("never name the note, in the title or the body, alone or in a batch", async () => {
     const backend = vaultWith({ "memory/notes/velha-receita.md": "# Velha receita\n\nA.\n" });
     const titles = ["Receita secreta da avó", "Endereço da tia Clara", "Senha do portão"];
     const paths: string[] = [];
-    // Uma gravação sozinha num commit.
+    // A write alone in a commit.
     paths.push(
       (await v1("alan", "write", { source: "agent", title: titles[0], body: "Um.", kind: "note" }))
         .body.path as string,
     );
     await flush();
-    // Um lote: duas gravações de clientes diferentes, e um «esqueça».
+    // A batch: two writes from different clients, and a "forget".
     paths.push(
       (
         await v1("alan", "write", {
@@ -353,12 +353,12 @@ describe("os commits", () => {
   });
 });
 
-describe("as versões (#297 do Kelpie)", () => {
-  it("uma gravação por cima pede a versão lida, e uma versão velha é `changed`", async () => {
+describe("versions (Kelpie's #297)", () => {
+  it("a write over a note asks for the version read, and an old version is `changed`", async () => {
     vaultWith();
     const memory = { title: "Lista de compras", body: "Pão e leite.", kind: "note" };
     const created = (await v1("alan", "write", { source: "agent", ...memory })).body;
-    // Uma nova memória que ainda espera o commit: de novo, é a gravação dele na fila.
+    // A new memory that still waits for the commit: again, it's the client's queued write.
     expect((await v1("alan", "write", { source: "agent", ...memory })).body).toEqual({
       ...created,
       action: "unchanged",
@@ -376,7 +376,7 @@ describe("as versões (#297 do Kelpie)", () => {
     ]);
     const second = (await v1("alan", "write", { ...update, version: read.version })).body;
     expect(second).toMatchObject({ ok: true, action: "written", path });
-    // Com a gravação ainda na fila: a mesma de novo não muda nada; outra é `changed`.
+    // With the write still in the queue: the same one again changes nothing; another is `changed`.
     expect((await v1("alan", "write", { ...update, version: second.version })).body).toEqual({
       ok: true,
       action: "unchanged",
@@ -386,7 +386,7 @@ describe("as versões (#297 do Kelpie)", () => {
     expect(
       (await v1("alan", "write", { ...update, body: "Só pão.", version: second.version })).body,
     ).toEqual({ ok: false, reason: "changed" });
-    // A busca não dá versão a uma nota com gravação na fila.
+    // Search gives no version to a note with a queued write.
     expect((await searched("alan", "lista compras")).notes[0]?.version).toBeNull();
     await flush();
     expect((await searched("alan", "lista compras")).notes[0]?.version).toBe(second.version);
@@ -398,7 +398,7 @@ describe("as versões (#297 do Kelpie)", () => {
     });
   });
 
-  it("confere o tipo, o escopo, a pasta e o corpo antes da regra", async () => {
+  it("checks the kind, the scope, the folder and the body before the rule", async () => {
     const other = "agents/noah/memory/notes/do-noah.md";
     const merged = "memory/notes/velha.md";
     vaultWith({
@@ -452,7 +452,7 @@ describe("as versões (#297 do Kelpie)", () => {
       await v1("alan", "write", { ...base, kind: "event", title: "Festa", validFrom: "2026-11-02" })
     ).body;
     expect(event.path).toBe("memory/events/2026/2026-11-02-festa.md");
-    // Um título que já tem nota, com outro corpo, ganha número.
+    // A title that already has a note, with another body, gets a number.
     const again = (
       await v1("alan", "write", { ...base, title: "Minha", scope: "agent/alan", body: "Outro." })
     ).body;
@@ -460,8 +460,8 @@ describe("as versões (#297 do Kelpie)", () => {
   });
 });
 
-describe("o arquivo e o «esqueça»", () => {
-  it("uma nota arquivada sai da busca e do recall, e continua legível pelo caminho", async () => {
+describe('archiving and "forget"', () => {
+  it("an archived note leaves search and recall, and stays readable by path", async () => {
     vaultWith();
     const written = await tool("alan", "memory_write", {
       source: "agent",
@@ -517,7 +517,7 @@ describe("o arquivo e o «esqueça»", () => {
     });
   });
 
-  it("arquivar pede a versão lida, e a nota do dono só pela palavra dele", async () => {
+  it("archiving asks for the version read, and the owner's note only on the owner's word", async () => {
     const path = "memory/notes/do-dono.md";
     vaultWith({ [path]: "# Do dono\n\nUma nota.\n" });
     const version = (await v1("alan", "read", { path })).body.version as string;
@@ -545,7 +545,7 @@ describe("o arquivo e o «esqueça»", () => {
     });
   });
 
-  it("«esqueça» só alcança as notas do próprio cliente e as pendentes", async () => {
+  it('"forget" only reaches the client\'s own notes and the pending ones', async () => {
     const owners = "memory/notes/do-dono.md";
     const corePending = "memory/profile/pendente.md";
     vaultWith({
@@ -559,7 +559,7 @@ describe("o arquivo e o «esqueça»", () => {
     const macs = (
       await v1("mac", "write", { source: "owner", title: "Do Mac", body: "M.", kind: "note" })
     ).body.path as string;
-    // Antes do commit, a nota ainda não está no índice.
+    // Before the commit, the note isn't in the index yet.
     expect((await v1("alan", "forget", { path: alans })).body).toEqual({
       ok: false,
       reason: "not_found",
@@ -573,8 +573,8 @@ describe("o arquivo e o «esqueça»", () => {
       ok: false,
       reason: "core_note",
     });
-    // O Mac não tem ownerClaims: o «o dono disse» dele fica pendente (#16), e uma nota pendente
-    // pode ser esquecida por quem a vê; uma nota do dono, não.
+    // Mac has no ownerClaims: its "owner said" stays pending (#16), and a pending note can be
+    // forgotten by whoever sees it; an owner's note can't.
     expect((await tool("alan", "memory_forget", { path: owners })).text).toContain(
       "Recusada (owners_note)",
     );
@@ -586,13 +586,13 @@ describe("o arquivo e o «esqueça»", () => {
       "Recusada (cron)",
     );
     expect((await v1("alan", "forget", { path: macs })).body).toEqual({ ok: true, path: macs });
-    // A remoção na fila já tira a nota da leitura, e um segundo «esqueça» espera o commit.
+    // The queued removal already hides the note from reads; a second "forget" waits for the commit.
     expect(await v1("mac", "read", { path: macs })).toEqual(NOT_FOUND);
     expect((await v1("mac", "forget", { path: macs })).body).toEqual({
       ok: false,
       reason: "not_found",
     });
-    // A nota do Alan espera o «sim»: o Noah, que a vê, pode esquecê-la.
+    // Alan's note waits for the "yes": Noah, who sees it, can forget it.
     expect((await tool("noah", "memory_forget", { path: alans })).text).toBe(`Removida: ${alans}.`);
     await flush();
     expect(await v1("alan", "read", { path: alans })).toEqual(NOT_FOUND);
@@ -600,8 +600,8 @@ describe("o arquivo e o «esqueça»", () => {
   });
 });
 
-describe("o recall e o núcleo (ADR-0001 §6)", () => {
-  it("saem cercados, com a origem de cada nota, sem deixar uma nota escapar, no orçamento", async () => {
+describe("recall and the core (ADR-0001 §6)", () => {
+  it("come out fenced, with each note's origin, without letting a note escape, within the budget", async () => {
     vaultWith({
       "memory/profile/viagens.md": `# Viagens\n\n${"O Diogo gosta de viajar de trem. ".repeat(400)}\n`,
     });
@@ -638,7 +638,7 @@ describe("o recall e o núcleo (ADR-0001 §6)", () => {
     const headings = lines.flatMap((line, i) => (line.startsWith("## ") ? [i] : []));
     const notes = headings.filter((i) => lines[i]?.endsWith(`[${id}]`));
     expect(notes).toHaveLength(3);
-    // A linha de origem leva o id do bloco: o corpo de uma nota não a forja.
+    // The origin line carries the block's id: a note's body can't forge it.
     expect(notes.map((i) => lines[i + 1]).sort()).toEqual([
       `origem: alan, conclusão, pendente [${id}]`,
       `origem: alan, conclusão, pendente [${id}]`,
@@ -649,7 +649,7 @@ describe("o recall e o núcleo (ADR-0001 §6)", () => {
     }
     expect((await recall(1_000_000)).tokens).toBeLessThanOrEqual(8_000);
     expect((await recall(1_000_000)).tokens).toBeGreaterThan(1_000);
-    // O portão: uma mensagem sem nada para buscar não busca.
+    // The gate: a message with nothing to search for doesn't search.
     expect((await v1("alan", "recall", { question: "valeu!" })).body).toEqual({
       text: "",
       tokens: 0,
@@ -664,7 +664,7 @@ describe("o recall e o núcleo (ADR-0001 §6)", () => {
     expect((await v1("alan", "core", { budgetTokens: 0 })).body.omitted).toBe(0);
   });
 
-  it("a busca pelo MCP sai cercada, com a origem e a versão", async () => {
+  it("search over MCP comes out fenced, with the origin and the version", async () => {
     vaultWith({ "memory/notes/feira.md": "# Feira\n\nA feira é no sábado.\n" });
     const result = await tool("mac", "memory_search", { query: "feira sábado" });
     expect(result.isError).toBe(false);

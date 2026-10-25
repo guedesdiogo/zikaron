@@ -1,4 +1,4 @@
-// A identidade vem da credencial (ADR-0001 §1): o JWT do Access, validado no Worker.
+// Identity comes from the credential (ADR-0001 §1): the Access JWT, verified in the Worker.
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   type AccessApp,
@@ -91,7 +91,7 @@ beforeEach(async () => {
 });
 
 describe("verifyAccessJwt", () => {
-  it("devolve o Client ID de um service token válido", async () => {
+  it("returns the Client ID of a valid service token", async () => {
     const fetcher = await fetcherFor([signing, "k1"]);
     expect(await verifyAccessJwt(await token(), APP, { now: NOW, fetcher })).toBe(
       "id-do-noah.access",
@@ -99,40 +99,40 @@ describe("verifyAccessJwt", () => {
   });
 
   it.each<[string, () => Promise<string | null>]>([
-    ["sem token", async () => null],
-    ["um token que não é JWT", async () => "abc.def"],
-    ["outro algoritmo", () => token({}, { alg: "HS256" })],
-    ["assinado por outra chave", () => token({}, { pair: other })],
-    ["um kid desconhecido", () => token({}, { kid: "k9" })],
-    ["outro aud", () => token({ aud: ["aud-de-outra-app"] })],
-    ["outro iss", () => token({ iss: "https://outro-time.cloudflareaccess.com" })],
-    ["vencido", () => token({ exp: SECONDS - 120 })],
-    ["ainda não válido", () => token({ nbf: SECONDS + 600 })],
-    ["emitido no futuro", () => token({ iat: SECONDS + 600 })],
-    ["sem exp", () => token({ exp: undefined })],
-    ["um login de pessoa", () => token({ email: "pessoa@example.com" })],
-    ["de outro tipo", () => token({ type: "org" })],
-    ["sem common_name", () => token({ common_name: "" })],
-  ])("recusa %s", async (_label, make) => {
+    ["no token", async () => null],
+    ["a token that isn't a JWT", async () => "abc.def"],
+    ["another algorithm", () => token({}, { alg: "HS256" })],
+    ["one signed by another key", () => token({}, { pair: other })],
+    ["an unknown kid", () => token({}, { kid: "k9" })],
+    ["another aud", () => token({ aud: ["aud-de-outra-app"] })],
+    ["another iss", () => token({ iss: "https://outro-time.cloudflareaccess.com" })],
+    ["an expired one", () => token({ exp: SECONDS - 120 })],
+    ["one not yet valid", () => token({ nbf: SECONDS + 600 })],
+    ["one issued in the future", () => token({ iat: SECONDS + 600 })],
+    ["no exp", () => token({ exp: undefined })],
+    ["a person's login", () => token({ email: "pessoa@example.com" })],
+    ["another type", () => token({ type: "org" })],
+    ["no common_name", () => token({ common_name: "" })],
+  ])("refuses %s", async (_label, make) => {
     const fetcher = await fetcherFor([signing, "k1"]);
     expect(await verifyAccessJwt(await make(), APP, { now: NOW, fetcher })).toBeNull();
   });
 
-  it("recusa a assinatura adulterada", async () => {
+  it("refuses a tampered signature", async () => {
     const fetcher = await fetcherFor([signing, "k1"]);
     const [header, , signature] = (await token()).split(".");
     const forged = `${header}.${jsonPart({ type: "app", aud: [APP.aud], iss: APP.teamDomain, exp: SECONDS + 60, common_name: "id-do-alan.access" })}.${signature}`;
     expect(await verifyAccessJwt(forged, APP, { now: NOW, fetcher })).toBeNull();
   });
 
-  it("sem a aplicação configurada, ninguém entra", async () => {
+  it("with no application configured, nobody gets in", async () => {
     const fetcher = await fetcherFor([signing, "k1"]);
     expect(
       await verifyAccessJwt(await token(), { ...APP, aud: "" }, { now: NOW, fetcher }),
     ).toBeNull();
   });
 
-  it("guarda as chaves e busca de novo quando o kid é novo", async () => {
+  it("keeps the keys and fetches again when the kid is new", async () => {
     const fetcher = await fetcherFor([signing, "k1"], [other, "k2"]);
     await verifyAccessJwt(await token(), APP, { now: NOW, fetcher });
     await verifyAccessJwt(await token(), APP, { now: NOW + 1_000, fetcher });
@@ -147,8 +147,8 @@ describe("verifyAccessJwt", () => {
   });
 });
 
-describe("as chaves do Access", () => {
-  it("uma chave que não se importa, ou de outro algoritmo, não derruba as outras", async () => {
+describe("the Access keys", () => {
+  it("a key that won't import, or of another algorithm, doesn't take down the others", async () => {
     const good = await publicJwk(signing, "k1");
     const fetcher: KeyFetcher = async () => ({
       keys: [
@@ -168,7 +168,7 @@ describe("as chaves do Access", () => {
     ).toBeNull();
   });
 
-  it("kids desconhecidos buscam as chaves de novo no máximo uma vez por minuto", async () => {
+  it("unknown kids fetch the keys again at most once a minute", async () => {
     const fetcher = await fetcherFor([signing, "k1"]);
     await verifyAccessJwt(await token(), APP, { now: NOW, fetcher });
     for (let i = 0; i < 20; i += 1) {
@@ -187,7 +187,7 @@ describe("as chaves do Access", () => {
 });
 
 describe("parseClients", () => {
-  it("lê os clientes pelo Client ID", () => {
+  it("reads the clients by Client ID", () => {
     const clients = parseClients(CLIENTS_JSON);
     expect(clients.get("id-do-noah.access")).toEqual({
       name: "noah",
@@ -199,50 +199,50 @@ describe("parseClients", () => {
   });
 
   it.each([
-    ["vazia", ""],
-    ["que não é objeto", "[]"],
+    ["that is empty", ""],
+    ["that isn't an object", "[]"],
     [
-      "com nome fora do padrão",
+      "with a name off the pattern",
       JSON.stringify({ a: { name: "Noah", exposed: true, privileged: false, ownerClaims: false } }),
     ],
     [
-      "com flag que não é booleana",
+      "with a flag that isn't boolean",
       JSON.stringify({
         a: { name: "noah", exposed: "sim", privileged: false, ownerClaims: false },
       }),
     ],
     [
-      "com chave desconhecida",
+      "with an unknown key",
       JSON.stringify({
         a: { name: "noah", exposed: true, privileged: false, ownerClaims: false, admin: true },
       }),
     ],
     [
-      "com cliente exposed e privileged",
+      "with a client both exposed and privileged",
       JSON.stringify({ a: { name: "noah", exposed: true, privileged: true, ownerClaims: false } }),
     ],
     [
-      "com Client ID repetido",
+      "with a repeated Client ID",
       '{"a": {"name": "noah", "exposed": true, "privileged": false, "ownerClaims": false}, "a": {"name": "alan", "exposed": false, "privileged": true, "ownerClaims": false}}',
     ],
     [
-      "com nome repetido",
+      "with a repeated name",
       JSON.stringify({
         a: { name: "noah", exposed: true, privileged: false, ownerClaims: false },
         b: { name: "noah", exposed: false, privileged: false, ownerClaims: false },
       }),
     ],
     [
-      "com o nome do próprio servidor",
+      "with the server's own name",
       JSON.stringify({
         a: { name: "zikaron", exposed: false, privileged: false, ownerClaims: false },
       }),
     ],
-  ])("recusa a configuração %s", (_label, json) => {
+  ])("refuses a configuration %s", (_label, json) => {
     expect(() => parseClients(json)).toThrow();
   });
 
-  it("dá a cada cliente a política de leitura do ADR-0001", () => {
+  it("gives each client the ADR-0001 read policy", () => {
     const clients = parseClients(CLIENTS_JSON);
     const of = (id: string) =>
       readerPolicy(clients.get(id) as NonNullable<ReturnType<Clients["get"]>>, clients);
@@ -257,7 +257,7 @@ describe("parseClients", () => {
 });
 
 describe("clientOf", () => {
-  it("só a credencial escolhe o cliente", async () => {
+  it("only the credential picks the client", async () => {
     const fetcher = await fetcherFor([signing, "k1"]);
     const clients = parseClients(CLIENTS_JSON);
     const request = (jwt: string | null, extra: Record<string, string> = {}) =>
