@@ -1,6 +1,6 @@
-// A API HTTP pequena (`/v1/*`), pelo canal do provedor (ADR-0001 §2): o que o provedor de memória do
-// Hermes chama. O `system_prompt_block` pede o núcleo, o `prefetch` o recall, e as gravações levam o
-// `context` e a evidência. JSON entra e sai; docs/api.md é o contrato escrito.
+// The small HTTP API (`/v1/*`), through the provider channel (ADR-0001 §2): what the Hermes memory
+// provider calls. `system_prompt_block` asks for the core, `prefetch` for the recall, and writes
+// carry the `context` and the evidence. JSON in and out; docs/api.md is the written contract.
 
 import { isObject, json, readJson } from "./http.ts";
 import type { Client } from "./identity.ts";
@@ -10,7 +10,7 @@ import type { Vault } from "./vault.ts";
 type VaultStub = DurableObjectStub<Vault>;
 type Body = Record<string, unknown>;
 
-/** O status HTTP de uma resposta do cofre: as recusas da regra são respostas, com 200. */
+/** The HTTP status of a vault answer: the rule's refusals are answers, with 200. */
 const STATUS: Record<string, number> = {
   invalid: 400,
   unauthorized: 401,
@@ -25,7 +25,7 @@ function answer(result: { ok: boolean; reason?: string }): Response {
 
 const invalid = (...problems: string[]) => json(400, { ok: false, reason: "invalid", problems });
 
-/** Os problemas de tipo dos campos de um pedido; o cofre confere o resto. */
+/** The type problems in a request's fields; the vault checks the rest. */
 function fieldProblems(
   body: Body,
   fields: Record<string, "string" | "number" | "boolean">,
@@ -43,7 +43,7 @@ function fieldProblems(
   return problems;
 }
 
-/** O claim de uma gravação pelo provedor: o canal é da rota; `source`, do pedido. */
+/** A provider write's claim: the channel comes from the route; `source`, from the request. */
 function claimOf(body: Body, fallback?: string): NoteClaim {
   return {
     channel: "provider",
@@ -139,7 +139,7 @@ const ROUTES: Record<string, (body: Body, vault: VaultStub, client: string) => P
     },
   };
 
-/** Uma rota `/v1/<nome>`: só POST, com um objeto JSON no corpo. */
+/** A `/v1/<name>` route: POST only, with a JSON object in the body. */
 export async function handleApi(
   request: Request,
   name: string,

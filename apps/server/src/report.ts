@@ -1,26 +1,26 @@
-// O relatório diário da memória (#17), em `memory/_lint/report.md`, fora do índice: o que a rotina
-// do cofre acha, escrito como links para as notas. Segue as regras do relatório do Kelpie
-// (docs/memory-format.md, «The daily report»): só links e vocabulário fechado, títulos e caminhos
-// que não saem do link, a mesma página para os mesmos achados, e nenhuma página sem achados.
+// The daily memory report (#17), at `memory/_lint/report.md`, outside the index: what the vault's
+// routine finds, written as links to the notes. It follows the rules of Kelpie's report
+// (docs/memory-format.md, "The daily report"): only links and a closed vocabulary, titles and paths
+// that stay inside the link, the same page for the same findings, and no page without findings.
 import { type NoteRef, noteLink, pathCode } from "@zikaron/memory";
 
-/** Cada lista mostra até isto, e cada linha de duplicadas até tantas notas, como no Kelpie. */
+/** Each list shows up to this, and each duplicates line up to that many notes, as in Kelpie. */
 const REPORT_ENTRIES = 200;
 const GROUP_NOTES = 10;
 
-/** O que a rotina diária acha. Os clientes seguem o padrão de nome de cliente. */
+/** What the daily routine finds. The clients follow the client name pattern. */
 export interface ReportFindings {
-  /** As notas do dono que a gravação de um cliente substituiu ou removeu na última semana. */
+  /** The owner's notes that a client's write replaced or removed in the last week. */
   changed: (NoteRef & { at: number; removed: boolean; clients: readonly string[] })[];
-  /** O que um cliente gravou na última semana como dito pelo dono, pelo provedor. */
+  /** What a client wrote in the last week as said by the owner, through the provider. */
   ownerClaims: (NoteRef & { client: string; at: number })[];
-  /** As notas que esperam o «sim» do dono, com o cliente da origem. */
+  /** The notes that wait for the owner's "yes", with the origin's client. */
   pending: (NoteRef & { client: string })[];
-  /** As tarefas e delegações que a rotina arquivou na última semana. */
+  /** The tasks and delegations the routine archived in the last week. */
   archived: (NoteRef & { at: number })[];
-  /** As tarefas e delegações do dono que a rotina arquivaria, e que ela não muda. */
+  /** The owner's tasks and delegations that the routine would archive, and doesn't change. */
   ownersTasks: NoteRef[];
-  /** As notas frias e as duplicadas do Kelpie (`lifecycleFindings`), já em ordem. */
+  /** Kelpie's cold notes and duplicates (`lifecycleFindings`), already in order. */
   cold: (NoteRef & { writtenAt: number })[];
   duplicates: { kind: "content" | "title"; notes: NoteRef[] }[];
 }
@@ -34,13 +34,13 @@ function capped(lines: string[]): string[] {
     : [...lines.slice(0, REPORT_ENTRIES), `- …e mais ${lines.length - REPORT_ENTRIES}.`];
 }
 
-/** As notas de um grupo como links, as primeiras GROUP_NOTES delas. */
+/** A group's notes as links, the first GROUP_NOTES of them. */
 function links(notes: readonly NoteRef[]): string {
   const shown = notes.slice(0, GROUP_NOTES).map(noteLink).join(", ");
   return notes.length > GROUP_NOTES ? `${shown} e mais ${notes.length - GROUP_NOTES}` : shown;
 }
 
-/** Uma lista por cliente, cada um com o seu subtítulo, os clientes e as notas em ordem. */
+/** One list per client, each with its own subheading, the clients and the notes in order. */
 function byClient<T extends NoteRef & { client: string }>(
   notes: readonly T[],
   line: (note: T) => string,
@@ -59,8 +59,8 @@ function byClient<T extends NoteRef & { client: string }>(
 }
 
 /**
- * Os achados como uma página Markdown, ou null quando não há nada. Os mesmos achados dão a mesma
- * página, sem hora, para um dia sem novidade não gerar commit.
+ * The findings as a Markdown page, or null when there are none. The same findings give the same
+ * page, with no time of day, so a day with nothing new makes no commit.
  */
 export function memoryReport(findings: ReportFindings): string | null {
   const sections: string[] = [];

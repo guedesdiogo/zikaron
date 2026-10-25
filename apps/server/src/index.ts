@@ -7,41 +7,41 @@ import { VAULT_NAME, type VaultEnv } from "./vault.ts";
 
 export { replaceBackendForTesting, Vault } from "./vault.ts";
 
-/** O webhook do GitHub, fora do Access, conferido pelo HMAC do segredo do webhook (ADR-0001 §1). */
+/** The GitHub webhook, outside Access, checked by the HMAC of the webhook secret (ADR-0001 §1). */
 const WEBHOOK_PATH = "/webhooks/github";
 /**
- * A conferência do deploy, também fora do Access: diz só o ambiente e o commit publicados, que o
- * deploy passa como `--var`, sem ler a configuração nem o cofre.
+ * The deploy check, also outside Access: it tells only the published environment and commit, which
+ * the deploy passes as `--var`, without reading the configuration or the vault.
  */
 const HEALTH_PATH = "/health";
 const API_PREFIX = "/v1/";
 
 let fetcherForTesting: KeyFetcher | undefined;
 
-/** Os testes trocam a busca das chaves do Access por esta. A produção nunca a chama. */
+/** Tests swap the Access key fetch for this one. Production never calls it. */
 export function replaceKeyFetcherForTesting(fetcher: KeyFetcher | undefined): void {
   fetcherForTesting = fetcher;
 }
 
-/** O nome de um erro para os logs, nunca a mensagem. */
+/** An error's name for the logs, never its message. */
 function errorName(error: unknown): string {
   return error instanceof Error ? error.name : "unknown error";
 }
 
 /**
- * O maior corpo que o webhook lê antes de conferir a assinatura: o GitHub limita as entregas a
- * 25 MB, e um push do cofre fica muito abaixo disso.
+ * The largest body the webhook reads before checking the signature: GitHub caps deliveries at
+ * 25 MB, and a vault push stays far below that.
  */
 export const MAX_WEBHOOK_BYTES = 5_000_000;
 
 /**
- * Recebe uma entrega do webhook do GitHub. Sem segredo, ou com a assinatura ausente ou errada,
- * responde 401 e não sincroniza nada. Um `ping` responde 200; um `push` só pede a sincronização,
- * sem ler nem gravar nada do corpo além do ref; os outros eventos são ignorados com 202.
+ * Receives a GitHub webhook delivery. Without a secret, or with the signature missing or wrong, it
+ * answers 401 and syncs nothing. A `ping` answers 200; a `push` only requests the sync, reading or
+ * writing nothing from the body beyond the ref; other events are ignored with 202.
  */
 async function receiveWebhook(request: Request, env: VaultEnv): Promise<Response> {
-  // O tamanho é conferido antes da assinatura: quem não tem o segredo não faz o Worker ler
-  // megabytes. O `Content-Length` declarado barra antes de ler; sem ele, a leitura para no limite.
+  // The size is checked before the signature: whoever lacks the secret can't make the Worker read
+  // megabytes. A declared `Content-Length` refuses up front; without it, reading stops at the cap.
   const declared = Number(request.headers.get("Content-Length") ?? "0");
   if (declared > MAX_WEBHOOK_BYTES) return new Response(null, { status: 413 });
   const body = await readUpTo(request, MAX_WEBHOOK_BYTES);
@@ -67,9 +67,9 @@ async function receiveWebhook(request: Request, env: VaultEnv): Promise<Response
 }
 
 /**
- * O cliente do pedido pela credencial (ADR-0001 §1), ou a resposta que o recusa: 500 com um código
- * quando a configuração dos clientes não vale, 401 sem um JWT válido de um cliente dela, 503 quando
- * as chaves do Access não vêm.
+ * The request's client by its credential (ADR-0001 §1), or the response that refuses it: 500 with a
+ * code when the clients' configuration is invalid, 401 without a valid JWT from one of its clients,
+ * 503 when the Access keys don't arrive.
  */
 async function authenticate(request: Request, env: VaultEnv): Promise<Client | Response> {
   let clients: Clients;
@@ -100,7 +100,7 @@ export default {
     if (request.method === "GET" && pathname === HEALTH_PATH) {
       return json(200, { status: "ok", environment: env.ZIKARON_ENV, commit: env.ZIKARON_COMMIT });
     }
-    // Tudo o mais passa pelo Access: a credencial escolhe o cliente, nunca o pedido.
+    // Everything else goes through Access: the credential picks the client, never the request.
     const client = await authenticate(request, env);
     if (client instanceof Response) return client;
     const vault = env.VAULT.getByName(VAULT_NAME);

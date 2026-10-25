@@ -83,14 +83,14 @@ export interface VaultSecrets {
 
 export type VaultEnv = Env & VaultSecrets;
 
-/** O que uma gravação responde: aceita na fila, ou o motivo da recusa. */
+/** What a write answers: accepted into the queue, or the reason for the refusal. */
 export type WriteResult =
   | { ok: true }
   | { ok: false; reason: "vault_off" | "invalid_path" | "too_large" };
 
 /**
- * Um arquivo empurrado com marcadores de conflito, fora das gravações do servidor até o dono
- * empurrar uma versão sem marcadores. Nenhum modelo o resolve.
+ * A file pushed with conflict markers, kept out of the server's writes until the owner pushes a
+ * version without markers. No model resolves it.
  */
 export interface HeldFile {
   path: string;
@@ -140,14 +140,14 @@ const PATH_TABLES = [
   "owner_changes",
   "archived_tasks",
 ] as const;
-/** A rotina diária (#17), no máximo uma vez por dia, como o ciclo de vida do Kelpie (#111). */
+/** The daily routine (#17), at most once a day, like Kelpie's lifecycle (#111). */
 const LIFECYCLE_EVERY_MS = 24 * 60 * 60_000;
-/** O relatório lista o que mudou nesta janela, e esquece o que é mais antigo. */
+/** The report lists what changed within this window, and forgets what is older. */
 const REPORT_WINDOW_MS = 7 * 24 * 60 * 60_000;
-/** Uma tarefa se encerra quando é cumprida, ou 90 dias depois da data dela (o Q5 do Diogo). */
+/** A task ends when it is done, or 90 days after its date (the owner's Q5). */
 const TASK_DAYS_MS = 90 * 24 * 60 * 60_000;
 const TASK_KINDS: readonly string[] = ["task", "delegation"];
-/** Os resumos dos commits da rotina: nenhum nomeia uma nota. */
+/** The routine's commit summaries: none names a note. */
 const ARCHIVE_SUMMARY = "Arquiva tarefas encerradas";
 const REPORT_SUMMARY = "Atualiza o relatório da memória";
 
@@ -414,9 +414,9 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * Enfileira as gravações de um cliente, que a leitura vê na hora e o alarme comita segundos depois,
-   * cada commit com um trailer `Zikaron-Client` por cliente. Só memória e conhecimento são graváveis,
-   * e a pasta de memória do próprio cliente.
+   * Queues a client's writes, which reads see at once and the alarm commits seconds later, each
+   * commit with one `Zikaron-Client` trailer per client. Only memory and knowledge are writable,
+   * and the client's own memory folder.
    */
   async write(
     client: string,
@@ -424,8 +424,8 @@ export class Vault extends DurableObject<VaultEnv> {
     summary: string,
   ): Promise<WriteResult> {
     if (this.#backend() === null) return { ok: false, reason: "vault_off" };
-    // Uma gravação num cofre nunca sincronizado precisa da base: sem ela, o merge com o que já está
-    // no cofre toma a versão do cofre inteira e põe a gravação de lado.
+    // A write to a never-synced vault needs the base: without it, the merge with what is already in
+    // the vault takes the vault's version whole and sets the write aside.
     await this.#ready();
     const valid =
       isClientName(client) &&
@@ -452,8 +452,8 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * Põe gravações na fila; quem chama abre a transação e já conferiu o caminho e o tamanho. A
-   * rotina diária grava assim também, em `memory/_lint/`, onde nenhum cliente grava.
+   * Puts writes in the queue; the caller opens the transaction and has already checked the path and
+   * the size. The daily routine writes this way too, in `memory/_lint/`, where no client writes.
    */
   #enqueue(
     client: string,
@@ -483,8 +483,9 @@ export class Vault extends DurableObject<VaultEnv> {
 
   override async alarm(): Promise<void> {
     if (this.#backend() === null) return;
-    // O índice alcança o head quando um esquema novo o recomeçou ou uma queda o deixou atrás. Vem
-    // antes do trabalho do GitHub, que move o índice sozinho, e falha sem atrasar as gravações.
+    // The index catches up with the head when a new schema started it over or a crash left it
+    // behind. It comes before the GitHub work, which moves the index on its own, and fails without
+    // delaying the writes.
     try {
       await this.#serialize(() => this.#catchUp());
     } catch (error) {
@@ -505,8 +506,8 @@ export class Vault extends DurableObject<VaultEnv> {
       await this.ctx.storage.setAlarm(retryAt);
       return;
     }
-    // A rotina diária vem depois do trabalho do GitHub e falha sozinha: as gravações já foram, e o
-    // que ela põe na fila sai no próximo alarme, logo abaixo.
+    // The daily routine comes after the GitHub work and fails on its own: the writes are already
+    // out, and what it queues goes out on the next alarm, just below.
     await this.#serialize(() => this.#lifecycle());
     const queued =
       this.#exec<{ n: number }>(`SELECT count(*) AS n FROM queue WHERE path NOT IN (${HELD})`)[0]
@@ -555,8 +556,8 @@ export class Vault extends DurableObject<VaultEnv> {
           rows += this.#exec<{ n: number }>(`SELECT count(*) AS n ${where}`, named)[0]?.n ?? 0;
           this.#exec(`DELETE ${where}`, named);
         }
-        // O relatório na fila, posto de lado, num merge ou retido pode nomear o que se apaga: sai, e
-        // o próximo alarme, logo, o escreve de novo com o que sobrou (como no Kelpie).
+        // The report, queued, set aside, in a merge or held, may name what is erased: it goes, and
+        // the next alarm, soon, writes it again with what is left (as in Kelpie).
         for (const table of ["queue", "conflicts", "owner_merges", "held"]) {
           this.#exec(`DELETE FROM ${table} WHERE path = ?`, LIFECYCLE_REPORT_PATH);
         }
@@ -592,13 +593,13 @@ export class Vault extends DurableObject<VaultEnv> {
     return this.#exec<{ path: string; at: number }>("SELECT path, at FROM held ORDER BY at");
   }
 
-  // As operações de memória (#126 do Kelpie, sem modelos), por cliente. Cada uma recebe o nome do
-  // cliente que a rota autenticou e lê a configuração dele aqui. Toda leitura passa pela política
-  // de leitura do ADR-0001 §5: uma nota que o leitor não vê responde como uma nota que não existe.
-  // As leituras mostram só o que o índice tem, nunca uma gravação ainda na fila, que o leitor talvez
-  // não pudesse ver; uma gravação por cima de uma nota com outra gravação na fila é `changed`.
+  // The memory operations (Kelpie's #126, without models), per client. Each takes the name of the
+  // client the route authenticated and reads its configuration here. Every read goes through the
+  // read policy of ADR-0001 §5: a note the reader can't see answers as a note that doesn't exist.
+  // Reads show only what the index has, never a write still in the queue, which the reader might
+  // not be allowed to see; a write over a note with another write in the queue is `changed`.
 
-  /** O cliente pelo nome, com a política de leitura dele; null quando a configuração não o tem. */
+  /** The client by name, with its read policy; null when the configuration doesn't have it. */
   #who(name: unknown): { client: Client; policy: ReaderPolicy } | null {
     if (typeof name !== "string") return null;
     let clients: Clients;
@@ -611,21 +612,21 @@ export class Vault extends DurableObject<VaultEnv> {
     return client === undefined ? null : { client, policy: readerPolicy(client, clients) };
   }
 
-  /** O índice no head, para as operações de memória. */
+  /** The index at the head, for the memory operations. */
   async #memoryReady(): Promise<void> {
     await this.#ready();
     await this.#catchUp();
   }
 
-  /** O arquivo mostra exatamente a versão do índice: nenhuma gravação dele espera na fila. */
+  /** The file shows exactly the index's version: none of its writes waits in the queue. */
   async #synced(text: string | null, version: IndexedVersion): Promise<boolean> {
     return text !== null && (await gitBlobSha(text)) === version.blobSha;
   }
 
   /**
-   * A versão atual de um caminho como a regra de gravação a lê (ADR-0001 §4): a confiança vem do
-   * índice, com a configuração de todos os clientes. Um merge da gravação do servidor com a edição
-   * do dono guarda as linhas do dono e conta como do dono, como no Kelpie (#160).
+   * A path's current version as the write rule reads it (ADR-0001 §4): the trust comes from the
+   * index, with every client's configuration. A merge of the server's write with the owner's edit
+   * keeps the owner's lines and counts as the owner's, as in Kelpie (#160).
    */
   #previous(found: IndexedVersion, client: Client, policy: ReaderPolicy): Previous {
     const trust = this.#memory.trust(found.path, policy) ?? { ownerGrade: false, tainted: true };
@@ -648,7 +649,7 @@ export class Vault extends DurableObject<VaultEnv> {
     };
   }
 
-  /** O cliente da última gravação na fila de um caminho, se alguma espera. */
+  /** The client of a path's latest queued write, if one waits. */
   #queuedBy(path: string): string | null {
     return (
       this.#exec<{ client: string }>(
@@ -659,9 +660,9 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * O núcleo (#112) para o cliente: as notas fixadas no escopo global ou no dele, o perfil do dono e
-   * o dele, só as que ele pode ver, cada uma com a origem. 1.000 tokens por padrão, 4.000 no máximo.
-   * Uma falha responde um bloco vazio, e a conversa segue sem ele.
+   * The core (#112) for the client: the notes pinned in the global scope or in its own, the owner's
+   * profile and its own, only the ones it can see, each with its origin. 1,000 tokens by default,
+   * 4,000 at most. A failure answers an empty block, and the conversation goes on without it.
    */
   async core(name: string, budgetTokens?: number | null): Promise<CoreResult> {
     const empty: CoreResult = { text: "", tokens: 0, paths: [], omitted: 0 };
@@ -683,9 +684,10 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * As memórias que respondem uma pergunta, no cercado (#110), sem vetores nem rerank: o portão do
-   * `needsMemory`, a busca com a política do leitor, sem as vencidas, e o empacotamento no orçamento
-   * (1.000 tokens por padrão, 8.000 no máximo). Uma falha responde um bloco vazio.
+   * The memories that answer a question, in the fence (#110), without vectors or rerank: the
+   * `needsMemory` gate, the search with the reader's policy, without the expired ones, and the
+   * packing into the budget (1,000 tokens by default, 8,000 at most). A failure answers an empty
+   * block.
    */
   async recall(
     name: string,
@@ -718,8 +720,8 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * As notas que respondem uma busca, para o `memory_search`: a mesma busca do recall, como lista
-   * no cercado. 3 por padrão, 10 no máximo. Uma nota com uma gravação na fila não dá versão.
+   * The notes that answer a search, for `memory_search`: the same search as the recall, as a list
+   * in the fence. 3 by default, 10 at most. A note with a write in the queue gives no version.
    */
   async search(
     name: string,
@@ -786,9 +788,9 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * Uma nota, uma página por vez, para o `memory_read`: a versão do índice que o leitor pode ver,
-   * arquivada também, e na primeira página os links que ele pode seguir. Qualquer outra coisa é
-   * «not found», exista ou não.
+   * A note, one page at a time, for `memory_read`: the index's version the reader can see, archived
+   * too, and on the first page the links it can follow. Anything else is "not found", whether it
+   * exists or not.
    */
   async readNote(
     name: string,
@@ -804,7 +806,7 @@ export class Vault extends DurableObject<VaultEnv> {
     try {
       await this.#memoryReady();
       const version = this.#memory.current(path, { reader });
-      // Uma remoção na fila já tirou a nota.
+      // A queued removal already took the note out.
       if (version === null || this.#visible(path) === null) return notFound;
       const offset = Math.max(Math.floor(Number(options?.offset ?? 0)) || 0, 0);
       const links: { title: string; path: string }[] = [];
@@ -832,19 +834,20 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * O escritor por trás do `memory_write` e do `/v1/write`, com a regra de gravação do ADR-0001 §4.
-   * - **Onde:** com `path`, uma nota que o leitor vê ganha a memória como nova versão, do mesmo tipo
-   *   e escopo, e guarda o que a memória deixou de fora. Sem `path`, a memória vai aonde o título a
-   *   põe, numerada quando o caminho está tomado, no escopo `global` por padrão, ou no do próprio
-   *   cliente, numa área ou num projeto.
-   * - **Versões (#297 do Kelpie):** `path` pede a versão que o leitor viu; uma versão gravada depois,
-   *   ou uma gravação ainda na fila, é `changed`, e nada é gravado.
-   * - **A regra decide** a origem e o nível, e recusa: rotina agendada (`cron`), `pinned`, nota do
-   *   dono, do núcleo ou arquivada. Por cima de uma versão contaminada, a nova herda a marca.
-   * - **Sem novidade:** a mesma versão de novo, ou uma nota que já diz o mesmo e o leitor vê, é
-   *   `unchanged`, e nada é gravado.
-   * Título, corpo, resumo, entidades e evidência perdem os segredos antes. O resumo do commit nunca
-   * nomeia a nota.
+   * The writer behind `memory_write` and `/v1/write`, with the write rule of ADR-0001 §4.
+   * - **Where:** with `path`, a note the reader sees gets the memory as a new version, of the same
+   *   type and scope, and keeps what the memory left out. Without `path`, the memory goes where the
+   *   title puts it, numbered when the path is taken, in the `global` scope by default, or in the
+   *   client's own, an area or a project.
+   * - **Versions (Kelpie's #297):** `path` asks for the version the reader saw; a version written
+   *   later, or a write still in the queue, is `changed`, and nothing is written.
+   * - **The rule decides** the origin and the level, and refuses: a scheduled routine (`cron`),
+   *   `pinned`, an owner's note, a core note or an archived one. Over a tainted version, the new
+   *   one inherits the mark.
+   * - **Nothing new:** the same version again, or a note that already says the same and the reader
+   *   sees, is `unchanged`, and nothing is written.
+   * Title, body, summary, entities and evidence lose their secrets first. The commit summary never
+   * names the note.
    */
   async writeNote(
     name: string,
@@ -859,7 +862,7 @@ export class Vault extends DurableObject<VaultEnv> {
     if (typeof input !== "object" || input === null || Array.isArray(input)) {
       return { ok: false, reason: "invalid", problems: ["the memory isn't valid"] };
     }
-    // Uma rotina agendada, ou um pin, é recusado antes de tudo, sem commit.
+    // A scheduled routine, or a pin, is refused before anything else, with no commit.
     const rule = writeClaim(claim, given(input.pinned) !== undefined);
     const early = decideWrite(client, rule, null);
     if (!early.ok) return { ok: false, reason: early.reason };
@@ -876,14 +879,14 @@ export class Vault extends DurableObject<VaultEnv> {
       if (found !== null && !isWritable(client.name, found.path)) {
         return { ok: false, reason: "scope_not_allowed" };
       }
-      // A nota como o arquivo a mostra agora; uma remoção na fila já a tirou.
+      // The note as the file shows it now; a queued removal already took it out.
       const text = found === null ? null : this.#visible(found.path);
       if (found !== null && text === null) return notFound;
       const before = found === null || text === null ? null : parseNote(found.path, text);
       const problems = this.#writeProblems(input, found, policy);
       if (problems.length > 0) return { ok: false, reason: "invalid", problems };
       const at = new Date().toISOString();
-      // Confere todos os campos antes de qualquer leitura deles; o nível certo vem da regra.
+      // Checks every field before any of them is read; the right level comes from the rule.
       await writeMemory(buildMemory(input, before, { level: "inferred" }), { at });
       if (found === null || text === null) {
         return await this.#writeNew(client, policy, rule, input, at);
@@ -922,15 +925,15 @@ export class Vault extends DurableObject<VaultEnv> {
     }
   }
 
-  /** O que uma memória tem de errado antes da regra, como o Kelpie confere. */
+  /** What is wrong with a memory before the rule, as Kelpie checks it. */
   #writeProblems(
     input: MemoryWriteInput,
     found: IndexedVersion | null,
     policy: ReaderPolicy,
   ): string[] {
     const problems: string[] = [];
-    // Uma nota fundida em outra do escopo dela (#112): o que ela tinha está lá, e a próxima versão
-    // também. Uma nota que o leitor não vê não é nomeada.
+    // A note merged into another in its scope (#112): what it had is there, and so is the next
+    // version. A note the reader can't see isn't named.
     const into = found === null ? null : this.#memory.mergedInto(found.path);
     if (into !== null) {
       problems.push(
@@ -961,7 +964,7 @@ export class Vault extends DurableObject<VaultEnv> {
     return problems;
   }
 
-  /** A versão que uma gravação sobre uma nota encontrada nomeia, ou o que há de errado nela. */
+  /** The version a write over a found note names, or what is wrong with it. */
   #versionProblem(value: unknown): { version: string; problem: null } | { problem: string } {
     const version = given(value);
     if (typeof version !== "string" || version === "") {
@@ -980,9 +983,9 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * Uma nota nova: aonde o título a põe, numerada quando outra nota tem o caminho. Uma nota que já
-   * diz o mesmo é `unchanged` só quando o leitor a vê, ou quando é a gravação dele ainda na fila:
-   * nunca se revela uma nota que ele não vê.
+   * A new note: where the title puts it, numbered when another note has the path. A note that
+   * already says the same is `unchanged` only when the reader sees it, or when it is the reader's
+   * own write still in the queue: a note the reader can't see is never revealed.
    */
   async #writeNew(
     client: Client,
@@ -1011,7 +1014,7 @@ export class Vault extends DurableObject<VaultEnv> {
     const own = memoryPath(memory.scope, memory.kind, memory.title, date);
     for (let n = 1; n <= MAX_PATH_NUMBER; n += 1) {
       const candidate = n === 1 ? own : own.replace(/\.md$/, `-${n}.md`);
-      // Daqui até a fila, nada espera: outra gravação não toma o caminho no meio.
+      // From here to the queue, nothing awaits: another write can't take the path in between.
       if (this.#visible(candidate) === null) {
         return await this.#queueNote(client.name, candidate, text, "Grava uma nota", version);
       }
@@ -1026,8 +1029,8 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * A primeira destas notas que já diz a memória e que o leitor pode saber que existe: uma que ele
-   * vê, sem gravação na fila, ou a gravação dele mesmo ainda na fila.
+   * The first of these notes that already says the memory and that the reader may know exists: one
+   * it sees, with no write in the queue, or its own write still in the queue.
    */
   async #sameNote(
     paths: readonly string[],
@@ -1050,7 +1053,7 @@ export class Vault extends DurableObject<VaultEnv> {
     return null;
   }
 
-  /** Enfileira uma versão; o resumo do commit nunca nomeia a nota. */
+  /** Queues a version; the commit summary never names the note. */
   async #queueNote(
     client: string,
     path: string,
@@ -1074,14 +1077,14 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * «Esqueça» vindo de um cliente (ADR-0001 §4): só uma nota que ele vê, gravada por ele ou à espera
-   * do «sim», fora do núcleo e que não vale como do dono. O git guarda a versão anterior.
+   * "Forget" from a client (ADR-0001 §4): only a note it sees, written by it or waiting for the
+   * "yes", outside the core and not counting as the owner's. Git keeps the previous version.
    */
   async forgetNote(name: string, path: string, context?: string): Promise<ForgetNoteResult> {
     const notFound: ForgetNoteResult = { ok: false, reason: "not_found" };
     const who = this.#who(name);
     if (who === null) return { ok: false, reason: "unauthorized" };
-    // Esquecer é um commit: uma rotina agendada não grava, nem para remover (Q3).
+    // Forgetting is a commit: a scheduled routine doesn't write, not even to remove (Q3).
     if (context === "cron") return { ok: false, reason: "cron" };
     if (typeof path !== "string" || path.length > MAX_PATH_CHARS) return notFound;
     if (this.#backend() === null) return { ok: false, reason: "vault_off" };
@@ -1114,9 +1117,9 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * Arquiva uma nota (#6): uma nova versão dela inteira com `archived: true`, pela mesma regra de
-   * gravação, a partir da versão que o leitor viu. Ela sai da busca, do recall e do núcleo, e
-   * continua legível pelo caminho.
+   * Archives a note (#6): a whole new version of it with `archived: true`, by the same write rule,
+   * from the version the reader saw. It leaves the search, the recall and the core, and stays
+   * readable by its path.
    */
   async archiveNote(
     name: string,
@@ -1169,7 +1172,7 @@ export class Vault extends DurableObject<VaultEnv> {
     }
   }
 
-  /** As notas que esperam o «sim» do dono e que o cliente pode ver, as mais recentes primeiro. */
+  /** The notes that wait for the owner's "yes" and that the client can see, most recent first. */
   async pending(name: string): Promise<PendingResult> {
     const who = this.#who(name);
     if (who === null) return { ok: false, reason: "unauthorized" };
@@ -1210,13 +1213,13 @@ export class Vault extends DurableObject<VaultEnv> {
     }
   }
 
-  // A rotina diária (#17): uma vez por dia, depois do trabalho do GitHub, arquiva as tarefas
-  // encerradas e escreve o relatório da memória, sem chamar modelo. Grava como o próprio servidor
-  // (`zikaron`), pela fila de sempre, e nunca apaga uma nota.
+  // The daily routine (#17): once a day, after the GitHub work, it archives the ended tasks and
+  // writes the memory report, without calling a model. It writes as the server itself (`zikaron`),
+  // through the usual queue, and never deletes a note.
 
   /**
-   * A configuração de todos os clientes, para a confiança das notas como o índice a calcula
-   * (ADR-0001 §3), com o nome de cada um; null quando ela não se lê.
+   * Every client's configuration, for the notes' trust as the index computes it (ADR-0001 §3), with
+   * each one's name; null when it can't be read.
    */
   #configured(): { names: string[]; policy: ReaderPolicy } | null {
     let clients: Clients;
@@ -1237,7 +1240,10 @@ export class Vault extends DurableObject<VaultEnv> {
     };
   }
 
-  /** Com que configuração o relatório diz o que vale como do dono; sem ela, nenhum `ownerClaims`. */
+  /**
+   * The configuration by which the report tells what counts as the owner's; without it, no
+   * `ownerClaims`.
+   */
   #ownerPolicy(): ReaderPolicy {
     return (
       this.#configured()?.policy ?? {
@@ -1249,7 +1255,7 @@ export class Vault extends DurableObject<VaultEnv> {
     );
   }
 
-  /** O arquivo de um caminho, quem escreveu o blob dele e se ele guarda as linhas do dono num merge. */
+  /** A path's file, who wrote its blob, and whether it keeps the owner's lines in a merge. */
   #fileOf(
     path: string,
   ): { content: string; blob_sha: string; authored: string | null; merged: number } | undefined {
@@ -1268,10 +1274,10 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * A versão que o cofre tem num caminho vale como do dono: pelo índice, com a configuração dos
-   * clientes, ou porque guarda as linhas do dono num merge (#160 do Kelpie). Um arquivo fora do
-   * índice é do dono quando o servidor não escreveu o blob dele, como no Kelpie. O relatório, que é
-   * do servidor, nunca conta.
+   * The version the vault has at a path counts as the owner's: by the index, with the clients'
+   * configuration, or because it keeps the owner's lines in a merge (Kelpie's #160). A file outside
+   * the index is the owner's when the server didn't write its blob, as in Kelpie. The report, which
+   * is the server's, never counts.
    */
   #ownerVersion(path: string, policy: ReaderPolicy): boolean {
     if (path === LIFECYCLE_REPORT_PATH) return false;
@@ -1283,9 +1289,9 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * Uma vez por dia, depois do trabalho do GitHub: o arquivo das tarefas encerradas e o relatório.
-   * Lê o índice no head; se não consegue levá-lo até lá, tenta de novo no próximo alarme. Qualquer
-   * outra falha espera o dia seguinte, e o log diz só o nome do erro.
+   * Once a day, after the GitHub work: the archive of the ended tasks and the report. It reads the
+   * index at the head; if it can't bring the index there, it tries again on the next alarm. Any
+   * other failure waits for the next day, and the log says only the error's name.
    */
   async #lifecycle(): Promise<void> {
     const now = Date.now();
@@ -1299,7 +1305,7 @@ export class Vault extends DurableObject<VaultEnv> {
     this.#set("lifecycle_after", `${now + LIFECYCLE_EVERY_MS}`);
     try {
       const configured = this.#configured();
-      // Sem a configuração dos clientes não se sabe o que vale como do dono: nada é arquivado.
+      // Without the clients' configuration, owner-grade notes are unknown: nothing is archived.
       if (configured === null) {
         console.error("Vault: the daily routine can't read the clients; it archives nothing");
       }
@@ -1314,15 +1320,16 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * Arquiva cada tarefa e delegação encerrada (o Q5 do Diogo): `status: done`, ou com a data
-   * (`valid_from`, senão quando foi escrita, como o `writtenAt` do Kelpie) passada de 90 dias.
-   * - **Só uma versão do servidor** que não vale como do dono: as do dono, e as que o dono editou,
-   *   voltam para o relatório sem mudança.
-   * - **Nunca uma que o núcleo carrega,** para cliente nenhum.
-   * - **A nova versão leva tudo o mais,** como o `archiveNote`, e o `origin` da anterior como está:
-   *   arquivar não lava a contaminação nem a põe, e a confiança calculada na leitura não muda.
-   * - Uma nota com gravação na fila, ou retida, espera o dia seguinte; uma que não se regrava
-   *   (um frontmatter ilegível) fica como está.
+   * Archives each ended task and delegation (the owner's Q5): `status: done`, or with its date
+   * (`valid_from`, else when it was written, like Kelpie's `writtenAt`) more than 90 days past.
+   * - **Only a server version** that doesn't count as the owner's: the owner's, and the ones the
+   *   owner edited, go back to the report unchanged.
+   * - **Never one the core loads,** for any client.
+   * - **The new version carries everything else,** like `archiveNote`, and the previous one's
+   *   `origin` as it is: archiving neither washes the taint off nor adds it, and the trust computed
+   *   on read doesn't change.
+   * - A note with a queued write, or held, waits for the next day; one that can't be rewritten
+   *   (an unreadable frontmatter) stays as it is.
    */
   async #archiveTasks(
     configured: { names: string[]; policy: ReaderPolicy },
@@ -1339,7 +1346,7 @@ export class Vault extends DurableObject<VaultEnv> {
       }
       if ([SERVER_CLIENT, ...configured.names].some((name) => coreCarries(note, name))) continue;
       const file = this.#fileOf(note.path);
-      // O índice mostra a versão do cofre, sem conflito retido nem gravação na fila.
+      // The index shows the vault's version, with no held conflict and no queued write.
       if (file?.blob_sha !== note.blobSha || this.#queuedWrite(note.path) !== undefined) continue;
       if (
         file.authored !== file.blob_sha ||
@@ -1362,7 +1369,7 @@ export class Vault extends DurableObject<VaultEnv> {
         };
         const text = (await writeMemory(memory, { at, existing: file.content })).text;
         const sha = await gitBlobSha(text);
-        // Nada mudou enquanto a versão nova se escrevia: nem o cofre, nem a fila.
+        // Nothing changed while the new version was being written: neither the vault nor the queue.
         if (this.#visible(note.path) !== file.content) continue;
         this.ctx.storage.transactionSync(() => {
           this.#enqueue(SERVER_CLIENT, [{ path: note.path, content: text }], ARCHIVE_SUMMARY, now);
@@ -1389,10 +1396,10 @@ export class Vault extends DurableObject<VaultEnv> {
   }
 
   /**
-   * O relatório da memória em `memory/_lint/report.md`, fora do índice, pela fila, como o próprio
-   * servidor: só quando muda, e removido quando não há nada. Os registros mais antigos que a janela
-   * saem antes. Uma tarefa que a rotina acabou de pôr na fila para arquivar já conta como
-   * arquivada, para o relatório de amanhã, sem novidade, ser o mesmo.
+   * The memory report at `memory/_lint/report.md`, outside the index, through the queue, as the
+   * server itself: only when it changes, and removed when there is nothing. Records older than the
+   * window go first. A task the routine has just queued for archiving already counts as archived,
+   * so tomorrow's report, with nothing new, is the same.
    */
   #report(now: number, ownersTasks: readonly NoteRef[], archivedToday: boolean): void {
     const since = now - REPORT_WINDOW_MS;
@@ -1411,7 +1418,7 @@ export class Vault extends DurableObject<VaultEnv> {
       change.clients.add(row.client);
       changes.set(row.path, change);
     }
-    // O que a rotina arquivou: na fila ainda, ou a versão que o cofre guarda.
+    // What the routine archived: still in the queue, or the version the vault keeps.
     const archived = this.#exec<{ path: string; at: number; queued: number }>(
       `SELECT t.path AS path, t.at AS at,
               EXISTS (SELECT 1 FROM queue q WHERE q.path = t.path AND q.client = ?) AS queued
@@ -1432,7 +1439,7 @@ export class Vault extends DurableObject<VaultEnv> {
         removed: change.removed,
         clients: [...change.clients],
       })),
-      // O arquivo da rotina leva o `origin` adiante: não é uma gravação nova do cliente.
+      // The routine's archiving carries the `origin` forward: it isn't a new write by the client.
       ownerClaims: this.#memory.ownerClaimsSince(
         since,
         this.#exec<{ blob_sha: string }>("SELECT blob_sha FROM archived_tasks").map(
@@ -1451,7 +1458,7 @@ export class Vault extends DurableObject<VaultEnv> {
         .filter((group) => group.notes.length > 1),
     });
     if (page === this.#visible(LIFECYCLE_REPORT_PATH)) return;
-    // Num dia de arquivo, o relatório vai no mesmo commit, com o mesmo resumo.
+    // On an archive day, the report goes in the same commit, with the same summary.
     const summary = archivedToday ? ARCHIVE_SUMMARY : REPORT_SUMMARY;
     this.ctx.storage.transactionSync(() =>
       this.#enqueue(SERVER_CLIENT, [{ path: LIFECYCLE_REPORT_PATH, content: page }], summary, now),
@@ -1501,8 +1508,8 @@ export class Vault extends DurableObject<VaultEnv> {
             .filter((file) => file.content !== null && hasConflictMarkers(file.content))
             .map((file) => [file.path, this.#fileContent(file.path)] as const),
         );
-        // Gravações na fila por cima de uma versão do dono: se um commit delas chegou com a resposta
-        // perdida, o relatório registra a mudança, lida aqui, antes de os arquivos mudarem (#160).
+        // Queued writes over an owner's version: if a commit of theirs landed with its answer lost,
+        // the report records the change, read here, before the files change (#160).
         const policy = this.#ownerPolicy();
         const owners = new Set(
           this.#exec<{ path: string }>("SELECT DISTINCT path FROM queue")
@@ -1623,7 +1630,7 @@ export class Vault extends DurableObject<VaultEnv> {
     path: string,
     incoming: string | null,
     base: string | null,
-    /** A versão que a sincronização substituiu valia como do dono. */
+    /** The version the sync replaced counted as the owner's. */
     overOwners: boolean,
   ): void {
     const queued = this.#exec<{
@@ -1642,8 +1649,8 @@ export class Vault extends DurableObject<VaultEnv> {
     if (landed !== -1) {
       // The server's own commit, whose answer was lost: those writes are done, later ones wait.
       this.#exec("DELETE FROM queue WHERE path = ? AND id <= ?", path, queued[landed]?.id ?? 0);
-      // Ela substituiu a versão do dono: o relatório a lista, como o flush listaria. Uma edição do
-      // próprio dono igual à da fila também conta: rara, e o relatório erra para o lado de listar.
+      // It replaced the owner's version: the report lists it, as the flush would. An owner's edit
+      // equal to the queued one also counts: rare, and the report errs on the side of listing.
       if (overOwners) {
         this.#exec(
           "INSERT INTO owner_changes (path, at, removed, client) VALUES (?, ?, ?, ?)",
@@ -1659,7 +1666,7 @@ export class Vault extends DurableObject<VaultEnv> {
           "INSERT OR REPLACE INTO authored (path, blob_sha) SELECT path, blob_sha FROM files WHERE path = ?",
           path,
         );
-        // O índice também precisa saber, para não tomar a versão pela do dono (ADR-0001 §2).
+        // The index must know too, so it doesn't take the version for the owner's (ADR-0001 §2).
         this.#memory.markAuthored(
           this.#exec<{ blob_sha: string }>("SELECT blob_sha FROM files WHERE path = ?", path).map(
             (row) => row.blob_sha,
@@ -1668,9 +1675,9 @@ export class Vault extends DurableObject<VaultEnv> {
       }
       return;
     }
-    // A gravação da rotina diária é para a versão que ela leu: uma edição do dono depois ganha
-    // inteira, sem merge nem conflito. A tarefa fica como o dono a deixou, e o próximo relatório
-    // se escreve de novo.
+    // The daily routine's write is for the version it read: a later edit by the owner wins whole,
+    // with no merge and no conflict. The task stays as the owner left it, and the next report is
+    // written anew.
     if (last.client === SERVER_CLIENT) {
       this.#exec("DELETE FROM queue WHERE path = ?", path);
       this.#exec("DELETE FROM archived_tasks WHERE path = ?", path);
@@ -1789,8 +1796,8 @@ export class Vault extends DurableObject<VaultEnv> {
       const shas = await Promise.all(writes.map(({ content }) => gitBlobSha(content)));
       const previousHead = this.#get("head");
       let outcome: Awaited<ReturnType<VaultBackend["commit"]>>;
-      // Sempre sobre o head sincronizado: se ele andou, o GitHub responde `stale` e o lote é refeito
-      // depois de um sync. O servidor nunca faz force-push.
+      // Always on the synced head: if it moved, GitHub answers `stale` and the batch is redone
+      // after a sync. The server never force-pushes.
       try {
         outcome = await backend.commit({
           branch: await this.#branch(backend),
@@ -1823,8 +1830,8 @@ export class Vault extends DurableObject<VaultEnv> {
       }
       const commit = outcome.commit;
       this.ctx.storage.transactionSync(() => {
-        // Uma versão do dono que a gravação de um cliente substituiu ou removeu: o relatório a lista
-        // (#160 do Kelpie, ADR-0003). Lida antes de os arquivos e o índice mudarem.
+        // An owner's version that a client's write replaced or removed: the report lists it
+        // (Kelpie's #160, ADR-0003). Read before the files and the index change.
         const policy = this.#ownerPolicy();
         const by = new Map(rows.map((row) => [row.path, row.client]));
         const now = Date.now();
@@ -1852,7 +1859,7 @@ export class Vault extends DurableObject<VaultEnv> {
             shas[i] ?? "",
           );
         });
-        // E o índice o registra, para não tomar a versão pela do dono (ADR-0001 §2).
+        // And the index records it, so it doesn't take the version for the owner's (ADR-0001 §2).
         this.#memory.markAuthored(
           shas.filter((sha): sha is string => sha !== undefined && sha !== ""),
         );

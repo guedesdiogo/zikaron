@@ -2,8 +2,8 @@ import { isReservedPath } from "@zikaron/memory";
 import { isVaultText } from "@zikaron/vault";
 
 /**
- * O nome de um cliente (`noah`, `alan`, `mac`…): um slug, que nomeia o escopo `agent/<nome>` e a
- * pasta `agents/<nome>/memory/` (ADR-0001 §1).
+ * A client's name (`noah`, `alan`, `mac`…): a slug, which names the `agent/<name>` scope and the
+ * `agents/<name>/memory/` folder (ADR-0001 §1).
  */
 export function isClientName(value: unknown): value is string {
   return typeof value === "string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(value);
