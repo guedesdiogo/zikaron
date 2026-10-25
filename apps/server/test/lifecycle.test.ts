@@ -126,7 +126,7 @@ describe("the task archive", () => {
     );
     expect(backend.commitRequests.flatMap((request) => request.deletions)).toEqual([]);
     const archive = backend.commitRequests.at(-1);
-    expect(archive?.headline).toBe("Arquiva tarefas encerradas");
+    expect(archive?.headline).toBe("Archive closed tasks");
     expect(archive?.body).toBe("Zikaron-Client: zikaron");
     expect(archive?.writes.map((write) => write.path).sort()).toEqual(
       [done, old, undated, LIFECYCLE_REPORT_PATH].sort(),
@@ -135,21 +135,21 @@ describe("the task archive", () => {
     // Trust doesn't change: Alan still can't see the outside note; Noah sees it as it was.
     expect(await stub.readNote("alan", done)).toEqual({ ok: false, reason: "not_found" });
     const page = await stub.readNote("noah", done);
-    expect(page.ok && page.text).toContain("origem: noah, de fora, pendente");
+    expect(page.ok && page.text).toContain("origin: noah, from outside, pending");
     expect(page.ok && page.text).toContain(" · archived · ");
     // Out of search, readable by path.
     const found = await stub.search("noah", "conta de luz", { k: 10 });
     expect(found.ok && found.notes.map((note) => note.path)).not.toContain(done);
 
     const page2 = report(backend);
-    expect(page2).toContain("## Tarefas arquivadas");
+    expect(page2).toContain("## Archived tasks");
     for (const path of [done, old, undated]) {
       expect(page2).toContain(`[[${path.slice(0, -3)}|`);
     }
     // Once archived, they no longer wait for the "yes" in the report; the one left still does.
     const waiting = page2.slice(
-      page2.indexOf("## Esperam o «sim»"),
-      page2.indexOf("## Tarefas arquivadas"),
+      page2.indexOf('## Waiting for the "yes"'),
+      page2.indexOf("## Archived tasks"),
     );
     expect(waiting).toContain(fresh.slice(0, -3));
     for (const path of [done, old, undated]) expect(waiting).not.toContain(path.slice(0, -3));
@@ -208,12 +208,12 @@ describe("the task archive", () => {
     }
     // Only the report was written, with its summary.
     expect(backend.commitRequests.slice(commits).map((request) => request.headline)).toEqual([
-      "Atualiza o relatório da memória",
+      "Update the memory report",
     ]);
     const page = report(backend);
-    expect(page).toContain("## Tarefas do dono para arquivar");
+    expect(page).toContain("## The owner's tasks to archive");
     const listed = page
-      .slice(page.indexOf("## Tarefas do dono para arquivar"))
+      .slice(page.indexOf("## The owner's tasks to archive"))
       .split("\n\n")[2]
       ?.trim();
     expect(listed).toBe(
@@ -223,7 +223,7 @@ describe("the task archive", () => {
         `- [[${owners.slice(0, -3)}|Renovar o passaporte]]`,
       ].join("\n"),
     );
-    expect(page).not.toContain("## Tarefas arquivadas");
+    expect(page).not.toContain("## Archived tasks");
   });
 
   it('archiving a task "said by the owner" doesn\'t count as a new write by the client', async () => {
@@ -256,8 +256,8 @@ describe("the task archive", () => {
     await dueIn(stub, false);
     await twice(stub);
     expect(report(backend)).toBe(page);
-    expect(page).toContain("## Tarefas arquivadas");
-    expect(page).not.toContain("## Ditas pelo dono, pelo provedor");
+    expect(page).toContain("## Archived tasks");
+    expect(page).not.toContain("## Said by the owner, through the provider");
   });
 
   it("a note that can't be rewritten stays as it is, and the others go on", async () => {
@@ -354,7 +354,7 @@ describe("the task archive: what the PR #18 review asked for", () => {
     await twice(stub);
     expect(backend.files()[path]).toBe(merged);
     expect(await rows(stub, "SELECT count(*) AS n FROM archived_tasks")).toEqual([{ n: 0 }]);
-    expect(report(backend)).toContain("Tarefas do dono para arquivar");
+    expect(report(backend)).toContain("The owner's tasks to archive");
   });
 
   it("archiving carries the level over, also the explicit one of a client that lost ownerClaims", async () => {
@@ -455,16 +455,16 @@ describe("the report", () => {
 
     const page = report(backend);
     const today = new Date().toISOString().slice(0, 10);
-    expect(page).toContain("# Relatório da memória");
+    expect(page).toContain("# Memory report");
     expect(page).toContain(
-      `## Notas do dono que um cliente mudou\n\nNotas que valiam como do dono e que a gravação de um cliente substituiu ou removeu na última semana. As mais recentes primeiro, com o último dia e quem mudou. O git guarda cada versão anterior.\n\n`,
+      `## The owner's notes a client changed\n\nNotes that counted as the owner's and that a client's write replaced or removed in the last week. Newest first, with the last day and who changed them. Git keeps every previous version.\n\n`,
     );
-    expect(page).toContain(`- [[memory/people/ana|Ana]]: mudada por noah em ${today}`);
-    expect(page).toContain(`- \`${velho}\`: removida por kelpie em ${today}`);
+    expect(page).toContain(`- [[memory/people/ana|Ana]]: changed by noah on ${today}`);
+    expect(page).toContain(`- \`${velho}\`: removed by kelpie on ${today}`);
     expect(page).not.toContain("notes/antiga");
     expect(page).not.toContain(proprio.slice(0, -3));
     expect(page).toContain(
-      `## Ditas pelo dono, pelo provedor\n\nO que cada cliente gravou na última semana como dito pelo dono, pelo provedor, com o dia. A evidência fica na nota. Desligar o \`ownerClaims\` de um cliente vale na hora.\n\n### noah\n\n- [[memory/people/ana|Ana]]: ${today}\n- [[${cafe.slice(0, -3)}|Café sem açúcar]]: ${today}`,
+      `## Said by the owner, through the provider\n\nWhat each client wrote in the last week as said by the owner, through the provider, with the day. The evidence stays in the note. Turning off a client's \`ownerClaims\` takes effect at once.\n\n### noah\n\n- [[memory/people/ana|Ana]]: ${today}\n- [[${cafe.slice(0, -3)}|Café sem açúcar]]: ${today}`,
     );
     // The evidence, free text, never goes in.
     expect(page).not.toContain("telegram:msg/7");
@@ -473,10 +473,10 @@ describe("the report", () => {
       `### alan\n\n- [[${conclusao.slice(0, -3)}|A Ana prefere chá]]\n\n### noah\n\n- [[${recado.slice(0, -3)}|Recado da Ana]]`,
     );
     expect(page).toContain(
-      "## Notas frias\n\nNotas episódicas, como sessões, eventos e tarefas, que o tempo esfriou. Ficam onde estão.\n\n- [[memory/sessions/2020/2020-01-05-conversa|Conversa antiga]]: escrita em 2020-01-05",
+      "## Cold notes\n\nEpisodic notes, such as sessions, events and tasks, that time has cooled. They stay where they are.\n\n- [[memory/sessions/2020/2020-01-05-conversa|Conversa antiga]]: written on 2020-01-05",
     );
     expect(page).toContain(
-      "## Duplicadas\n\n- O mesmo conteúdo: [[knowledge/cozinha/receita|Receita de bolo]], [[memory/notes/receita|Receita de bolo]]",
+      "## Duplicates\n\n- Same content: [[knowledge/cozinha/receita|Receita de bolo]], [[memory/notes/receita|Receita de bolo]]",
     );
     expect(
       await rows(stub, "SELECT path, removed, client FROM owner_changes ORDER BY path"),
@@ -507,8 +507,8 @@ describe("the report", () => {
     await stub.read("README.md");
     await twice(stub);
     const page = report(backend);
-    expect(page).toContain("## Duplicadas");
-    expect(backend.commitRequests.at(-1)?.headline).toBe("Atualiza o relatório da memória");
+    expect(page).toContain("## Duplicates");
+    expect(backend.commitRequests.at(-1)?.headline).toBe("Update the memory report");
     const commits = backend.commitRequests.length;
 
     // The same day, the routine doesn't run again; a day later, the same findings change nothing.

@@ -59,7 +59,7 @@
       }
     },
     // Production (Story 1.9): release only, on the owner's order (.github/workflows/producao.yml),
-    // against the real vault (docs/producao.md). Like staging: workers.dev, Access in front, the
+    // against the real vault (docs/production.md). Like staging: workers.dev, Access in front, the
     // webhook and /health on bypass, and the values as `--var` at deploy.
     "producao": {
       "name": "zikaron",

@@ -75,7 +75,7 @@ prs_e_issues() {
     gh api graphql -f owner="${REPO%/*}" -f name="${REPO#*/}" \
       -f query="query(\$owner: String!, \$name: String!) { repository(owner: \$owner, name: \$name) { defaultBranchRef { name } $q } }"
   done | jq -s '
-    # A list cut at the query's limit would hide a PR, an issue or the `critico` label: fail.
+    # A list cut at the limit of the query would hide a PR, an issue or the `critico` label: fail.
     ( .[].data.repository | to_entries[] | select(.key | startswith("c")) | .value.associatedPullRequests
       | ., .nodes[].closingIssuesReferences, .nodes[].closingIssuesReferences.nodes[].labels
       | select(.totalCount != (.nodes | length))

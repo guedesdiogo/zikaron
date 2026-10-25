@@ -201,7 +201,7 @@ describe("MCP", () => {
     }
     // They all say the result is data, not instructions.
     for (const each of tools) {
-      expect(each.description, each.name).toMatch(/nunca instruções/i);
+      expect(each.description, each.name).toMatch(/never instructions/i);
     }
   });
 
@@ -269,7 +269,7 @@ describe("MCP", () => {
       params: { name: "memory_search", arguments: "café" },
     });
     expect(notObject.body?.result).toEqual({
-      content: [{ type: "text", text: "Recusada (invalid): `arguments` must be an object" }],
+      content: [{ type: "text", text: "Refused (invalid): `arguments` must be an object" }],
       isError: true,
     });
     for (const [name, args, problem] of [
@@ -293,7 +293,7 @@ describe("MCP", () => {
       ["memory_pending", {}],
     ] as const) {
       expect(await tool("alan", name, args)).toEqual({
-        text: "Recusada (vault_off): A memória está desligada.",
+        text: "Refused (vault_off): The memory is off.",
         isError: true,
       });
     }

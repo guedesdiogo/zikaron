@@ -16,7 +16,7 @@ const found = async (client: "noah" | "alan" | "mac" | "kelpie", query: string, 
 
 /** The path and the version that a write over MCP confirmed. */
 function writtenAt(text: string): { path: string; version: string } {
-  const match = /^(?:Gravada|Já estava na memória): (\S+), versão ([0-9a-f]{12})\.$/.exec(text);
+  const match = /^(?:Written|Already in the memory): (\S+), version ([0-9a-f]{12})\.$/.exec(text);
   if (match === null) throw new Error(`not a write: ${text}`);
   return { path: match[1] as string, version: match[2] as string };
 }
@@ -61,7 +61,7 @@ describe("reading (ADR-0001 §5)", () => {
     const pending = (await v1("alan", "pending")).body;
     expect(pending).toEqual({ ok: true, text: "", notes: [] });
     expect(await tool("alan", "memory_pending")).toEqual({
-      text: "Nenhuma nota espera o «sim» do dono.",
+      text: 'No note waits for the owner\'s "yes".',
       isError: false,
     });
     const page = (await v1("alan", "read", { path: profile })).body;
@@ -84,12 +84,12 @@ describe("reading (ADR-0001 §5)", () => {
     // Noah: everything, each note with its origin.
     expect(await found("noah", "reunião Ana quinta")).toContain(path);
     expect((await v1("noah", "read", { path })).body.text).toContain(
-      "origem: noah, de fora, pendente",
+      "origin: noah, from outside, pending",
     );
     const noahRecall = (await v1("noah", "recall", { question: "quando é a reunião com a Ana?" }))
       .body;
     expect(noahRecall.text).toContain("quinta");
-    expect(noahRecall.text).toContain("origem: noah, de fora, pendente");
+    expect(noahRecall.text).toContain("origin: noah, from outside, pending");
     expect((await v1("noah", "core")).body.paths).toEqual([profile, outside]);
     const noahPending = (await v1("noah", "pending")).body as {
       notes: { path: string; client: string; source: string }[];
@@ -127,7 +127,7 @@ describe("reading (ADR-0001 §5)", () => {
     expect(file).not.toContain("review:");
     expect(await found("alan", "café açúcar")).toEqual([path]);
     const page = (await v1("alan", "read", { path })).body;
-    expect(page.text).toContain("origem: dono");
+    expect(page.text).toContain("origin: owner");
     expect(page.version).toBe((await searched("alan", "café açúcar")).notes[0]?.version);
   });
 
@@ -167,7 +167,7 @@ describe("writing (ADR-0001 §4)", () => {
       ).body,
     ).toEqual({ ok: false, reason: "cron" });
     expect(await tool("noah", "memory_write", { ...cron, kind: "note", source: "agent" })).toEqual({
-      text: "Recusada (cron): Rotinas agendadas não gravam na memória.",
+      text: "Refused (cron): Scheduled routines do not write to the memory.",
       isError: true,
     });
     await flush();
@@ -182,7 +182,7 @@ describe("writing (ADR-0001 §4)", () => {
       reason: "pinned",
     });
     expect((await tool("alan", "memory_write", { source: "agent", ...memory })).text).toBe(
-      "Recusada (pinned): Nenhum agente fixa uma nota: o pinned só vem do cofre.",
+      "Refused (pinned): No agent pins a note: pinned only comes from the vault.",
     );
     await flush();
     expect(backend.commitRequests).toHaveLength(0);
@@ -194,7 +194,7 @@ describe("writing (ADR-0001 §4)", () => {
     const version = (await v1("alan", "read", { path })).body.version as string;
     const update = { path, version, title: "Ana", body: "Mora no Porto.", kind: "person" };
     expect((await tool("alan", "memory_write", { ...update, source: "agent" })).text).toContain(
-      "Recusada (owners_note)",
+      "Refused (owners_note)",
     );
     // Without ownerClaims, not even through the provider.
     expect((await v1("alan", "write", { ...update, source: "owner" })).body).toEqual({
@@ -203,7 +203,7 @@ describe("writing (ADR-0001 §4)", () => {
     });
     // Over MCP, Noah's "owner said" is a conclusion.
     expect((await tool("noah", "memory_write", { ...update, source: "owner" })).text).toContain(
-      "Recusada (owners_note)",
+      "Refused (owners_note)",
     );
     const corrected = await v1("noah", "write", {
       ...update,
@@ -230,7 +230,7 @@ describe("writing (ADR-0001 §4)", () => {
     expect(await v1("alan", "read", { path })).toEqual(NOT_FOUND);
     // Kelpie, neither exposed nor privileged, sees the notes of clients that aren't exposed.
     const seen = (await v1("kelpie", "read", { path })).body;
-    expect(seen.text).toContain("origem: alan, de fora, pendente");
+    expect(seen.text).toContain("origin: alan, from outside, pending");
     const rewritten = await tool("kelpie", "memory_write", {
       source: "agent",
       path,
@@ -246,7 +246,7 @@ describe("writing (ADR-0001 §4)", () => {
     expect(file).toContain("taint: inherited");
     expect(await v1("alan", "read", { path })).toEqual(NOT_FOUND);
     expect((await v1("kelpie", "read", { path })).body.text).toContain(
-      "origem: kelpie, conclusão, pendente, contaminação herdada",
+      "origin: kelpie, conclusion, pending, inherited taint",
     );
   });
 
@@ -474,7 +474,7 @@ describe('archiving and "forget"', () => {
     expect(await found("alan", "presente receitas")).toEqual([path]);
     const archived = await tool("alan", "memory_archive", { path, version });
     expect(archived.text).toMatch(
-      /^Arquivada: memory\/notes\/ideia-de-presente\.md, versão [0-9a-f]{12}\.$/,
+      /^Archived: memory\/notes\/ideia-de-presente\.md, version [0-9a-f]{12}\.$/,
     );
     await flush();
     expect(await found("alan", "presente receitas")).toEqual([]);
@@ -497,7 +497,7 @@ describe('archiving and "forget"', () => {
     expect(page.text).toContain("Um livro de receitas para a Ana.");
     const now = (await v1("alan", "read", { path })).body.version as string;
     expect((await tool("alan", "memory_archive", { path, version: now })).text).toContain(
-      "Recusada (archived)",
+      "Refused (archived)",
     );
     expect(
       (
@@ -576,14 +576,14 @@ describe('archiving and "forget"', () => {
     // Mac has no ownerClaims: its "owner said" stays pending (#16), and a pending note can be
     // forgotten by whoever sees it; an owner's note can't.
     expect((await tool("alan", "memory_forget", { path: owners })).text).toContain(
-      "Recusada (owners_note)",
+      "Refused (owners_note)",
     );
     expect((await v1("mac", "forget", { path: macs, context: "cron" })).body).toEqual({
       ok: false,
       reason: "cron",
     });
     expect((await tool("mac", "memory_forget", { path: macs, context: "cron" })).text).toContain(
-      "Recusada (cron)",
+      "Refused (cron)",
     );
     expect((await v1("alan", "forget", { path: macs })).body).toEqual({ ok: true, path: macs });
     // The queued removal already hides the note from reads; a second "forget" waits for the commit.
@@ -593,7 +593,7 @@ describe('archiving and "forget"', () => {
       reason: "not_found",
     });
     // Alan's note waits for the "yes": Noah, who sees it, can forget it.
-    expect((await tool("noah", "memory_forget", { path: alans })).text).toBe(`Removida: ${alans}.`);
+    expect((await tool("noah", "memory_forget", { path: alans })).text).toBe(`Removed: ${alans}.`);
     await flush();
     expect(await v1("alan", "read", { path: alans })).toEqual(NOT_FOUND);
     expect(await found("mac", "mac")).toEqual([]);
@@ -640,9 +640,9 @@ describe("recall and the core (ADR-0001 §6)", () => {
     expect(notes).toHaveLength(3);
     // The origin line carries the block's id: a note's body can't forge it.
     expect(notes.map((i) => lines[i + 1]).sort()).toEqual([
-      `origem: alan, conclusão, pendente [${id}]`,
-      `origem: alan, conclusão, pendente [${id}]`,
-      `origem: dono [${id}]`,
+      `origin: alan, conclusion, pending [${id}]`,
+      `origin: alan, conclusion, pending [${id}]`,
+      `origin: owner [${id}]`,
     ]);
     for (const budget of [0, 40, 120, 300]) {
       expect((await recall(budget)).tokens).toBeLessThanOrEqual(budget);
@@ -658,7 +658,7 @@ describe("recall and the core (ADR-0001 §6)", () => {
     const core = (await v1("alan", "core", { budgetTokens: 1_000_000 })).body;
     expect(core.tokens).toBeGreaterThan(1_000);
     expect(core.tokens).toBeLessThanOrEqual(4_000);
-    expect(core.text).toMatch(/\norigem: dono \[[0-9a-f]{16}\]\n/);
+    expect(core.text).toMatch(/\norigin: owner \[[0-9a-f]{16}\]\n/);
     const small = (await v1("alan", "core")).body;
     expect(small).toEqual({ text: "", tokens: 0, paths: [], omitted: 1 });
     expect((await v1("alan", "core", { budgetTokens: 0 })).body.omitted).toBe(0);
@@ -669,9 +669,9 @@ describe("recall and the core (ADR-0001 §6)", () => {
     const result = await tool("mac", "memory_search", { query: "feira sábado" });
     expect(result.isError).toBe(false);
     expect(result.text).toMatch(/^<memory-[0-9a-f]{16} /);
-    expect(result.text).toMatch(/note · global · origem: dono · version [0-9a-f]{12}/);
+    expect(result.text).toMatch(/note · global · origin: owner · version [0-9a-f]{12}/);
     expect(await tool("mac", "memory_search", { query: "nada parecido" })).toEqual({
-      text: "Nenhuma nota encontrada.",
+      text: "No notes found.",
       isError: false,
     });
     const read = await tool("mac", "memory_read", { path: "memory/notes/feira.md", offset: 0 });

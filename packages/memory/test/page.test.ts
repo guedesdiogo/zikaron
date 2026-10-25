@@ -127,10 +127,10 @@ describe("readPage, in Zikaron's format (#6)", () => {
       offset: 0,
       links: [],
       version: "0123456789ab",
-      provenance: "origem: alan, conclusão, pendente",
+      provenance: "origin: alan, conclusion, pending",
     });
     expect(page.text).toContain(
-      "task · global · updated 2026-10-01 · explicit · archived · status done · origem: alan, conclusão, pendente · version 0123456789ab",
+      "task · global · updated 2026-10-01 · explicit · archived · status done · origin: alan, conclusion, pending · version 0123456789ab",
     );
     expect(page.text).not.toContain("Kelpie");
     expect(page.text).not.toContain("\nlink ");
@@ -260,11 +260,11 @@ describe("renderHits", () => {
         invalidAt: null,
         current: true,
         archived: true,
-        provenance: "origem: dono",
+        provenance: "origin: owner",
         version: "0123456789ab",
       },
     ]);
-    expect(text).toContain("note · global · archived · origem: dono · version 0123456789ab");
+    expect(text).toContain("note · global · archived · origin: owner · version 0123456789ab");
     expect(text).not.toContain("Kelpie");
   });
 });

@@ -148,8 +148,8 @@ const REPORT_WINDOW_MS = 7 * 24 * 60 * 60_000;
 const TASK_DAYS_MS = 90 * 24 * 60 * 60_000;
 const TASK_KINDS: readonly string[] = ["task", "delegation"];
 /** The routine's commit summaries: none names a note. */
-const ARCHIVE_SUMMARY = "Arquiva tarefas encerradas";
-const REPORT_SUMMARY = "Atualiza o relatório da memória";
+const ARCHIVE_SUMMARY = "Archive closed tasks";
+const REPORT_SUMMARY = "Update the memory report";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
@@ -915,7 +915,7 @@ export class Vault extends DurableObject<VaultEnv> {
       ) {
         return { ok: false, reason: "changed" };
       }
-      return await this.#queueNote(client.name, found.path, written, "Grava uma nota");
+      return await this.#queueNote(client.name, found.path, written, "Write a note");
     } catch (error) {
       if (error instanceof MemoryFormatError) {
         return { ok: false, reason: "invalid", problems: [...error.problems] };
@@ -1016,7 +1016,7 @@ export class Vault extends DurableObject<VaultEnv> {
       const candidate = n === 1 ? own : own.replace(/\.md$/, `-${n}.md`);
       // From here to the queue, nothing awaits: another write can't take the path in between.
       if (this.#visible(candidate) === null) {
-        return await this.#queueNote(client.name, candidate, text, "Grava uma nota", version);
+        return await this.#queueNote(client.name, candidate, text, "Write a note", version);
       }
       const same = await this.#sameNote([candidate], memory, client, policy);
       if (same !== null) return { ok: true, action: "unchanged", ...same };
@@ -1107,7 +1107,7 @@ export class Vault extends DurableObject<VaultEnv> {
       if (!(await this.#synced(text, found)) || this.#visible(path) !== text) {
         return { ok: false, reason: "changed" };
       }
-      const written = await this.write(client.name, [{ path, content: null }], "Remove uma nota");
+      const written = await this.write(client.name, [{ path, content: null }], "Remove a note");
       if (written.ok) return { ok: true, path };
       return { ok: false, reason: written.reason === "vault_off" ? "vault_off" : "unavailable" };
     } catch (error) {
@@ -1162,7 +1162,7 @@ export class Vault extends DurableObject<VaultEnv> {
       const written = (await writeMemory(memory, { at: new Date().toISOString(), existing: text }))
         .text;
       if (this.#visible(path) !== text) return { ok: false, reason: "changed" };
-      return await this.#queueNote(client.name, path, written, "Arquiva uma nota");
+      return await this.#queueNote(client.name, path, written, "Archive a note");
     } catch (error) {
       if (error instanceof MemoryFormatError) {
         return { ok: false, reason: "invalid", problems: [...error.problems] };

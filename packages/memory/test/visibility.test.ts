@@ -189,18 +189,18 @@ function provenanceLines(text: string): Record<string, string> {
 
 /** The origin each note gives Noah, who sees everything, with his `ownerClaims`. */
 const ORIGINS: Record<string, string> = {
-  confirmada: "origem: dono",
-  dono: "origem: dono",
-  "dono-pendente": "origem: noah, de fora, pendente",
-  "noah-externa": "origem: noah, de fora, pendente",
-  "noah-dono": "origem: dono",
-  "noah-dono-ferramenta": "origem: noah, diz ser do dono",
-  "alan-concluiu": "origem: alan, conclusão, pendente",
-  "alan-externa": "origem: alan, de fora, pendente",
-  "alan-herdada": "origem: alan, conclusão, contaminação herdada",
-  "sem-origem": "origem: desconhecida",
-  "zeca-concluiu": "origem: zeca, conclusão, pendente",
-  "dono-quebrou-origin": "origem: desconhecida",
+  confirmada: "origin: owner",
+  dono: "origin: owner",
+  "dono-pendente": "origin: noah, from outside, pending",
+  "noah-externa": "origin: noah, from outside, pending",
+  "noah-dono": "origin: owner",
+  "noah-dono-ferramenta": "origin: noah, claims to be the owner's",
+  "alan-concluiu": "origin: alan, conclusion, pending",
+  "alan-externa": "origin: alan, from outside, pending",
+  "alan-herdada": "origin: alan, conclusion, inherited taint",
+  "sem-origem": "origin: unknown",
+  "zeca-concluiu": "origin: zeca, conclusion, pending",
+  "dono-quebrou-origin": "origin: unknown",
 };
 
 describe("provenance in recall and in the core (ADR-0001 §6)", () => {
@@ -209,7 +209,7 @@ describe("provenance in recall and in the core (ADR-0001 §6)", () => {
       const hits = retrieve(index, "Projeto Xis comum", { reader: NOAH, limit: 100 });
       const packed = pack(index, hits, { budgetTokens: 20_000, reader: NOAH });
       // The hub, an owner's note without a pin, comes in through the graph.
-      expect(provenanceLines(packed.text)).toEqual({ ...ORIGINS, hub: "origem: dono" });
+      expect(provenanceLines(packed.text)).toEqual({ ...ORIGINS, hub: "origin: owner" });
       const core = coreBlock(index, {
         agentId: "noah",
         budgetTokens: 20_000,
@@ -219,8 +219,8 @@ describe("provenance in recall and in the core (ADR-0001 §6)", () => {
       expect(provenanceLines(core.text)).toEqual(ORIGINS);
       // Without a reader, no server version counts as the owner's.
       const skeptical = provenanceLines(pack(index, hits, { budgetTokens: 20_000 }).text);
-      expect(skeptical["noah-dono"]).toBe("origem: noah, diz ser do dono");
-      expect(skeptical.dono).toBe("origem: dono");
+      expect(skeptical["noah-dono"]).toBe("origin: noah, claims to be the owner's");
+      expect(skeptical.dono).toBe("origin: owner");
     });
   });
 
@@ -233,8 +233,8 @@ describe("provenance in recall and in the core (ADR-0001 §6)", () => {
       review: null,
       taint: null,
     };
-    expect(provenance(origin, false)).toBe("origem: ?, conclusão");
-    expect(provenance(origin, true)).toBe("origem: dono");
+    expect(provenance(origin, false)).toBe("origin: ?, conclusion");
+    expect(provenance(origin, true)).toBe("origin: owner");
   });
 });
 

@@ -195,7 +195,10 @@ async function main() {
     content: Buffer.from(confirmed, "utf8").toString("base64"),
     sha: file.sha,
   });
-  check("the \"yes\" in the vault shows it to alan", await until(120, () => seen("alan", outsidePath)));
+  check(
+    'the "yes" in the vault shows it to alan',
+    await until(120, () => seen("alan", outsidePath)),
+  );
 
   // 7. A note written on GitHub reaches the recall through the webhook.
   const ownersPath = `memory/notes/e2e-${RUN}-do-dono.md`;

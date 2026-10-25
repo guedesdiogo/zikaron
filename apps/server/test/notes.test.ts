@@ -69,7 +69,7 @@ describe("a new version", () => {
     }
     // A task's page states its status, and the origin.
     const page = (await v1("alan", "read", { path })).body;
-    expect(page.text).toContain(" · pinned · status open · origem: dono · ");
+    expect(page.text).toContain(" · pinned · status open · origin: owner · ");
     const done = await v1("noah", "write", {
       source: "owner",
       path,

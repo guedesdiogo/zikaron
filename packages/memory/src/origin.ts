@@ -64,25 +64,25 @@ export function parseOrigin(value: unknown): Origin | null {
 }
 
 const SOURCE_LABELS: Record<Source, string> = {
-  owner: "diz ser do dono",
-  agent: "conclusão",
-  external: "de fora",
+  owner: "claims to be the owner's",
+  agent: "conclusion",
+  external: "from outside",
 };
 
 /**
- * A note's provenance line in recall, the core, reads and search (ADR-0001 §6): `origem: dono`
+ * A note's provenance line in recall, the core, reads and search (ADR-0001 §6): `origin: owner`
  * when the version counts as the owner's; otherwise the client, where it came from, and whether it
  * waits for the "yes". Only closed vocabulary and the client's name, which follows CLIENT_NAME: the
  * evidence, free text, stays out, so nothing from a note gets into the fence this way.
  */
 export function provenance(origin: Origin | null, ownerGrade: boolean): string {
-  if (ownerGrade) return "origem: dono";
-  if (origin === null) return "origem: desconhecida";
+  if (ownerGrade) return "origin: owner";
+  if (origin === null) return "origin: unknown";
   const client = CLIENT_NAME.test(origin.client) ? origin.client : "?";
   const parts = [client, SOURCE_LABELS[origin.source]];
-  if (origin.review !== null) parts.push("pendente");
-  if (origin.taint !== null) parts.push("contaminação herdada");
-  return `origem: ${parts.join(", ")}`;
+  if (origin.review !== null) parts.push("pending");
+  if (origin.taint !== null) parts.push("inherited taint");
+  return `origin: ${parts.join(", ")}`;
 }
 
 /** The block as it goes into the frontmatter, without the empty keys, in a fixed order. */
