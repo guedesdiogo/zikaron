@@ -31,8 +31,8 @@ function validity(validFrom: number | null, invalidAt: number | null): string | 
 
 /**
  * Who wrote a note, as far as Kelpie knows: its own commits are recorded, but notes from before the
- * record, and other clients of the vault, aren't the owner's for that. O Zikaron passa a linha de
- * proveniência do ADR-0001 §6 no lugar.
+ * record, and other clients of the vault, aren't the owner's for that. Zikaron passes the
+ * provenance line of ADR-0001 §6 instead.
  */
 const writer = (options: { byKelpie?: boolean; provenance?: string }) =>
   options.provenance ?? (options.byKelpie ? "written by Kelpie" : "not written by Kelpie");
@@ -64,7 +64,7 @@ export interface ReadPageOptions {
   /** Where the page starts in the body, in UTF-16 code units, as `nextOffset` gave it. */
   offset: number;
   byKelpie?: boolean;
-  /** A linha de proveniência da nota (`provenance`), que substitui o «written by Kelpie». */
+  /** The note's provenance line (`provenance`), which replaces "written by Kelpie". */
   provenance?: string;
   /** The note's version (`noteVersion`), which `memory_write` takes back to change it (#297). */
   version: string;
@@ -80,9 +80,9 @@ export interface Page {
 
 /**
  * A page of a note: its heading and what it is, its body from `offset`, its links on the first
- * page, and where to go on. Uma nota arquivada diz que está, um `document` mostra o link, e uma
- * `task` ou `delegation` o `status` (#6). The whole page stays under READ_PAGE_CHARS, and is never cut inside a
- * surrogate pair.
+ * page, and where to go on. An archived note says so, a `document` shows its link, and a `task` or
+ * `delegation` its `status` (#6). The whole page stays under READ_PAGE_CHARS, and is never cut
+ * inside a surrogate pair.
  */
 export function readPage(version: PageVersion, options: ReadPageOptions): Page {
   const id = blockId();
@@ -169,9 +169,9 @@ export interface HitView {
   invalidAt: number | null;
   current: boolean;
   byKelpie?: boolean;
-  /** A linha de proveniência da nota, no lugar do «written by Kelpie». */
+  /** The note's provenance line, in place of "written by Kelpie". */
   provenance?: string;
-  /** Uma busca que pede as arquivadas diz quais são. */
+  /** A search that asks for archived notes says which ones are. */
   archived?: boolean;
   /**
    * The version `memory_write` takes back (#297), or null when the hit shows a version a write has

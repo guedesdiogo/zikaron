@@ -1,38 +1,39 @@
-// Quem lê o quê (ADR-0001 §3 e §5). A confiança de uma versão é calculada na leitura, a partir do
-// bloco `origin`, de quem escreveu o blob (`authored_blobs`) e da configuração atual dos clientes,
-// para que desligar o `ownerClaims` de um cliente valha na hora, sem reescrever o cofre. Tudo aqui
-// vira SQL sobre `v`, uma linha de `versions`, e toda comparação aceita NULL sem virar NULL.
+// Who reads what (ADR-0001 §3 and §5). A version's trust is computed at read time, from the
+// `origin` block, from who wrote the blob (`authored_blobs`) and from the clients' current
+// settings, so that turning off a client's `ownerClaims` takes effect at once, without rewriting
+// the vault. Everything here becomes SQL over `v`, a row of `versions`, and every comparison
+// accepts NULL without turning NULL.
 import type { SqlValue } from "./memory-index.ts";
 
 export const READER_MODES = ["exposed", "privileged", "plain"] as const;
 /**
- * `exposed`: lê conteúdo de fora e recebe tudo. `privileged`: age com a autoridade do dono e nunca
- * recebe nota contaminada. `plain`: recebe o que vale como do dono, as próprias e as de quem não é
- * `exposed`.
+ * `exposed`: reads outside content and gets everything. `privileged`: acts with the owner's
+ * authority and never gets a tainted note. `plain`: gets what counts as the owner's, its own notes,
+ * and those of clients that aren't `exposed`.
  */
 export type ReaderMode = (typeof READER_MODES)[number];
 
 export interface ReaderPolicy {
-  /** O cliente que lê. */
+  /** The client that reads. */
   client: string;
   mode: ReaderMode;
   /**
-   * Os clientes configurados que não leem conteúdo de fora. É uma lista de permissão: um cliente
-   * que saiu da configuração, ou que nunca esteve nela, conta como `exposed`, para que tirar um
-   * cliente comprometido da configuração não limpe a marca das notas dele.
+   * The configured clients that don't read outside content. It is an allowlist: a client that left
+   * the configuration, or was never in it, counts as `exposed`, so that taking a compromised client
+   * out of the configuration doesn't clear the mark on its notes.
    */
   trusted: readonly string[];
-  /** Os clientes cujo «o dono disse», pelo provedor, vale como do dono. */
+  /** The clients whose "the owner said", through the provider, counts as the owner's. */
   ownerClaims: readonly string[];
 }
 
-/** O blob da versão foi escrito pelo servidor. */
+/** The server wrote the version's blob. */
 const AUTHORED = "EXISTS (SELECT 1 FROM authored_blobs a WHERE a.blob_sha = v.blob_sha)";
 
 /**
- * Vale como do dono: um blob que o servidor não escreveu, que não espera o «sim» e cujo `origin`,
- * se havia, pôde ser lido; ou um blob do servidor com `source: owner` pelo provedor, de um cliente
- * com `ownerClaims`, sem pendência nem contaminação herdada.
+ * Counts as the owner's: a blob the server didn't write, that doesn't wait for the "yes" and whose
+ * `origin`, if it had one, could be read; or a server blob with `source: owner` through the
+ * provider, from a client with `ownerClaims`, neither pending nor with inherited taint.
  */
 export function ownerGradeSql(policy: ReaderPolicy): [string, SqlValue[]] {
   return [
@@ -45,9 +46,9 @@ export function ownerGradeSql(policy: ReaderPolicy): [string, SqlValue[]] {
 }
 
 /**
- * Contaminada: não vale como do dono e veio de fora, ou herdou a marca, ou tem um `origin` que não
- * pôde ser lido, ou foi gravada por um cliente fora da lista de confiáveis. Na dúvida, fica de fora:
- * um blob do servidor sem `origin` também conta.
+ * Tainted: doesn't count as the owner's and came from outside, or inherited the mark, or has an
+ * `origin` that couldn't be read, or was written by a client outside the trusted list. When in
+ * doubt, it stays out: a server blob without `origin` counts too.
  */
 export function taintedSql(policy: ReaderPolicy): [string, SqlValue[]] {
   const [owner, bindings] = ownerGradeSql(policy);
@@ -61,7 +62,7 @@ export function taintedSql(policy: ReaderPolicy): [string, SqlValue[]] {
   ];
 }
 
-/** As versões que o leitor vê, como SQL sobre `v`. */
+/** The versions the reader sees, as SQL over `v`. */
 export function visibleSql(policy: ReaderPolicy): [string, SqlValue[]] {
   if (policy.mode === "exposed") return ["1", []];
   if (policy.mode === "privileged") {

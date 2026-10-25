@@ -1,4 +1,4 @@
-// O formato do Zikaron (#6): o bloco `origin`, os tipos novos e o arquivo.
+// Zikaron's format (#6): the `origin` block, the new kinds and the archive.
 import { runInDurableObject } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
@@ -44,8 +44,8 @@ async function withIndex(name: string, run: (index: MemoryIndex) => Promise<void
   });
 }
 
-describe("o bloco origin", () => {
-  it("é escrito pelo escritor e lido de volta inteiro", async () => {
+describe("the origin block", () => {
+  it("is written by the writer and read back whole", async () => {
     const { text } = await writeMemory(
       { ...CAFE, origin: { ...NOAH, review: "pending", taint: "inherited" } },
       { at: AT },
@@ -58,7 +58,7 @@ describe("o bloco origin", () => {
     expect(note?.warnings).toEqual([]);
   });
 
-  it("omite as chaves vazias", async () => {
+  it("omits the empty keys", async () => {
     const { text } = await writeMemory(
       { ...CAFE, origin: { ...NOAH, evidence: null } },
       { at: AT },
@@ -69,16 +69,16 @@ describe("o bloco origin", () => {
   });
 
   it.each([
-    ["uma chave desconhecida", { ...NOAH, trusted: true }],
-    ["um cliente fora do padrão", { ...NOAH, client: "Noah Bot" }],
-    ["um canal desconhecido", { ...NOAH, channel: "git" }],
-    ["uma fonte desconhecida", { ...NOAH, source: "diogo" }],
-    ["um review que não é pending", { ...NOAH, review: "approved" }],
-    ["um taint que não é inherited", { ...NOAH, taint: "yes" }],
-    ["uma evidência em duas linhas", { ...NOAH, evidence: "a\nb" }],
-    ["uma evidência longa demais", { ...NOAH, evidence: "x".repeat(301) }],
-    ["uma lista", [NOAH]],
-  ])("é ignorado inteiro com %s, e a nota continua indexável", (_label, origin) => {
+    ["an unknown key", { ...NOAH, trusted: true }],
+    ["a client outside the pattern", { ...NOAH, client: "Noah Bot" }],
+    ["an unknown channel", { ...NOAH, channel: "git" }],
+    ["an unknown source", { ...NOAH, source: "diogo" }],
+    ["a review that isn't pending", { ...NOAH, review: "approved" }],
+    ["a taint that isn't inherited", { ...NOAH, taint: "yes" }],
+    ["evidence on two lines", { ...NOAH, evidence: "a\nb" }],
+    ["evidence that is too long", { ...NOAH, evidence: "x".repeat(301) }],
+    ["a list", [NOAH]],
+  ])("is ignored whole with %s, and the note stays indexable", (_label, origin) => {
     expect(parseOrigin(origin)).toBeNull();
     const note = readNote(
       "memory/notes/cafe.md",
@@ -88,15 +88,15 @@ describe("o bloco origin", () => {
     expect(note?.warnings).toContain("`origin` is invalid; ignored");
   });
 
-  it("o escritor recusa um origin inválido", async () => {
+  it("the writer refuses an invalid origin", async () => {
     await expect(
       writeMemory({ ...CAFE, origin: { ...NOAH, client: "" } }, { at: AT }),
     ).rejects.toThrow(MemoryFormatError);
   });
 });
 
-describe("os tipos novos", () => {
-  it("têm pasta e tier padrão próprios", async () => {
+describe("the new kinds", () => {
+  it("have their own folder and default tier", async () => {
     expect(memoryPath("global", "task", "Renovar o passaporte")).toBe(
       "memory/tasks/renovar-o-passaporte.md",
     );
@@ -110,7 +110,7 @@ describe("os tipos novos", () => {
     expect([document?.kind, document?.tier]).toEqual(["document", "semantic"]);
   });
 
-  it("uma tarefa e uma delegação levam status", async () => {
+  it("a task and a delegation carry a status", async () => {
     const { text } = await writeMemory(
       { ...CAFE, kind: "task", title: "Renovar o passaporte", status: "open" },
       { at: AT },
@@ -121,7 +121,7 @@ describe("os tipos novos", () => {
     );
   });
 
-  it("um documento guarda o link e o assunto, nunca o conteúdo", async () => {
+  it("a document keeps the link and the subject, never the content", async () => {
     const document: MemoryInput = {
       ...CAFE,
       kind: "document",
@@ -143,7 +143,7 @@ describe("os tipos novos", () => {
     ).rejects.toThrow("`link` must be one http(s) URL");
   });
 
-  it("o leitor ignora um status ou um link inválido, com aviso", () => {
+  it("the reader ignores an invalid status or link, with a warning", () => {
     const task = readNote(
       "memory/tasks/x.md",
       "---\nstatus: maybe\narchived: sim\n---\n\n# X\n\ny\n",
@@ -161,7 +161,7 @@ describe("os tipos novos", () => {
     ]);
   });
 
-  it("um link com controle ou marca bidirecional não vale", async () => {
+  it("a link with a control or a bidirectional mark is invalid", async () => {
     const spoofed = "https://example.com/\u202Egpj.exe";
     expect(
       readNote("memory/documents/x.md", `---\nlink: ${JSON.stringify(spoofed)}\n---\n\n# X\n\ny\n`)
@@ -172,7 +172,7 @@ describe("os tipos novos", () => {
     ).rejects.toThrow("`link` must be one http(s) URL");
   });
 
-  it("em outros tipos, status e link são chaves do dono: nem lidas, nem apagadas", async () => {
+  it("in other kinds, status and link are the owner's keys: not read, not removed", async () => {
     const owners = "---\nstatus: rascunho\nlink: algum lugar\n---\n\n# Ideia\n\nx\n";
     const note = readNote("memory/notes/ideia.md", owners);
     expect(note).toMatchObject({ status: null, link: null, warnings: [] });
@@ -188,7 +188,7 @@ describe("os tipos novos", () => {
   });
 });
 
-describe("o arquivo", () => {
+describe("the archive", () => {
   const ARCHIVED: MemoryInput = {
     ...CAFE,
     title: "Café com leite",
@@ -212,7 +212,7 @@ describe("o arquivo", () => {
     );
   }
 
-  it("tira a nota da busca, dos títulos, das entidades e dos vizinhos", async () => {
+  it("takes the note out of search, titles, entities and neighbours", async () => {
     await withIndex("arquivo-busca", async (index) => {
       await seed(index);
       const paths = (hits: { path: string }[]) => hits.map((hit) => hit.path);
@@ -224,7 +224,7 @@ describe("o arquivo", () => {
     });
   });
 
-  it("aparece quando pedida diretamente: includeArchived, o caminho e os links", async () => {
+  it("shows up when asked for directly: includeArchived, the path and the links", async () => {
     await withIndex("arquivo-direto", async (index) => {
       await seed(index);
       expect(
@@ -237,7 +237,7 @@ describe("o arquivo", () => {
     });
   });
 
-  it("sai do núcleo e dos jobs do ciclo de vida, mesmo pinned", async () => {
+  it("leaves the core and the lifecycle jobs, even when pinned", async () => {
     await withIndex("arquivo-nucleo", async (index) => {
       await seed(index);
       expect(index.lifecycleNotes().map((note) => note.path)).not.toContain(ARCHIVED_PATH);
@@ -249,7 +249,7 @@ describe("o arquivo", () => {
     });
   });
 
-  it("uma nota arquivada hoje não volta numa busca do passado", async () => {
+  it("a note archived today doesn't come back in a search of the past", async () => {
     await withIndex("arquivo-passado", async (index) => {
       const vault = new FakeVault();
       const before = await writeMemory(CAFE, { at: AT });
@@ -268,7 +268,7 @@ describe("o arquivo", () => {
     });
   });
 
-  it("com includeArchived, a nota arquivada tem vizinhos", async () => {
+  it("with includeArchived, the archived note has neighbours", async () => {
     await withIndex("arquivo-vizinhos", async (index) => {
       const vault = new FakeVault();
       const archived = await writeMemory(
@@ -285,7 +285,7 @@ describe("o arquivo", () => {
     });
   });
 
-  it("o rebuild reproduz as colunas novas", async () => {
+  it("the rebuild reproduces the new columns", async () => {
     await withIndex("arquivo-rebuild", async (index) => {
       const vault = new FakeVault();
       const archived = await writeMemory(ARCHIVED, { at: AT });
@@ -298,7 +298,7 @@ describe("o arquivo", () => {
   });
 });
 
-describe("o ciclo de vida do Zikaron (#17)", () => {
+describe("Zikaron's lifecycle (#17)", () => {
   const TASK: MemoryInput = {
     scope: "global",
     kind: "task",
@@ -310,7 +310,7 @@ describe("o ciclo de vida do Zikaron (#17)", () => {
     origin: { ...NOAH, channel: "tool", source: "agent", evidence: null, review: "pending" },
   };
 
-  it("as notas do ciclo de vida dizem o status, o cliente da origem e a pendência", async () => {
+  it("lifecycle notes give the status, the origin's client and whether it's pending", async () => {
     await withIndex("ciclo-notas", async (index) => {
       const task = await writeMemory(TASK, { at: AT });
       await index.applyCommit(
@@ -338,28 +338,28 @@ describe("o ciclo de vida do Zikaron (#17)", () => {
     });
   });
 
-  it("lista o que o servidor gravou como dito pelo dono, pelo provedor, desde um instante", async () => {
+  it("lists what the server wrote as said by the owner, through the provider, since an instant", async () => {
     await withIndex("ciclo-donos", async (index) => {
       const vault = new FakeVault();
       const said = (title: string, origin: Origin, at = AT) =>
         writeMemory({ ...CAFE, title, origin }, { at });
       const first = await said("Café sem açúcar", NOAH);
       const second = await said("Café sem açúcar, de novo", NOAH);
-      // O arquivo da rotina leva o `origin` adiante: com `except`, não é uma gravação nova.
+      // The routine's archive carries the `origin` forward: with `except`, it isn't a new write.
       const archived = await said("Café sem açúcar, arquivada", NOAH);
-      // O `updated` de antes do instante: um índice refeito não a faz nova.
+      // An `updated` from before the instant: a rebuilt index doesn't make it new.
       const old = await said("Chá verde", NOAH, "2026-09-01T00:00:00Z");
       const tool = await said("Pão integral", { ...NOAH, channel: "tool" });
       const agent = await said("Bolo de fubá", { ...NOAH, source: "agent", review: "pending" });
       const alan = await said("Água com gás", { ...NOAH, client: "alan", evidence: null });
-      // O mesmo bloco num blob do dono: ele mesmo escreveu, não o provedor.
+      // The same block in an owner's blob: the owner wrote it, not the provider.
       const owners = await said("Suco de laranja", NOAH);
       index.markAuthored(
         await Promise.all(
           [first, second, archived, old, tool, agent, alan].map((note) => gitBlobSha(note.text)),
         ),
       );
-      // 2026-10-01T01:00: antes do instante.
+      // 2026-10-01T01:00: before the instant.
       await index.applyCommit(vault.commit({ "memory/preferences/cafe.md": first.text }));
       const since = Date.parse("2026-10-01T01:30:00Z");
       await index.applyCommit(
@@ -372,7 +372,7 @@ describe("o ciclo de vida do Zikaron (#17)", () => {
           "memory/preferences/suco.md": owners.text,
         }),
       );
-      // Uma versão nova, que já não é do dono, não apaga a que foi.
+      // A new version, no longer the owner's, doesn't erase the one that was.
       await index.applyCommit(vault.commit({ "memory/preferences/agua.md": agent.text }));
       await index.applyCommit(vault.commit({ "memory/preferences/cafe.md": archived.text }));
       const at = Date.parse("2026-10-01T02:00:00Z");

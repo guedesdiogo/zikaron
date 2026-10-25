@@ -113,8 +113,8 @@ describe("readPage", () => {
   });
 });
 
-describe("readPage, no formato do Zikaron (#6)", () => {
-  it("diz que a nota está arquivada, a origem dela e o status de uma task", async () => {
+describe("readPage, in Zikaron's format (#6)", () => {
+  it("says the note is archived, gives its origin and a task's status", async () => {
     const version = await versionOf(
       "page-arquivada",
       memory("Comprar pão", "Na padaria da esquina.", {
@@ -136,7 +136,7 @@ describe("readPage, no formato do Zikaron (#6)", () => {
     expect(page.text).not.toContain("\nlink ");
   });
 
-  it("mostra o link de um documento numa linha própria, escapado", async () => {
+  it("shows a document's link on a line of its own, escaped", async () => {
     const version = await versionOf(
       "page-documento",
       memory("Contrato do apartamento", "O contrato de aluguel.", {
@@ -247,7 +247,7 @@ describe("renderHits", () => {
     expect(renderHits([])).toBe("");
   });
 
-  it("mostra a origem no lugar do «written by Kelpie», e diz quais estão arquivadas", () => {
+  it('shows the origin in place of "written by Kelpie", and says which notes are archived', () => {
     const text = renderHits([
       {
         path: "memory/notes/cafe.md",
