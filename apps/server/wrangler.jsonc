@@ -1,10 +1,13 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "zikaron",
+  // O nível de cima é só local (testes e `wrangler dev`): os Workers publicados são os do `env`.
+  // Um deploy ou um `secret put` sem `--env` vai para um Worker à parte, nunca para a produção.
+  "name": "zikaron-local",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },
-  // A Story 1.8 decide as rotas e o domínio. Até lá o Worker não fica exposto em workers.dev.
+  // O nível de cima é o dos testes e do desenvolvimento local, fora do workers.dev. A CI publica
+  // sempre com `--env` (staging ou producao), nunca este.
   "workers_dev": false,
   "preview_urls": false,
   // O GitHub App e o repositório do cofre são de um deploy, e entram como `--var` no deploy.
@@ -13,15 +16,19 @@
   // A identidade (ADR-0001 §1) também é de um deploy, e entra como `--var`: ACCESS_TEAM_DOMAIN é o
   // domínio do time no Access (`https://<time>.cloudflareaccess.com`), ACCESS_AUD o AUD da aplicação,
   // e ZIKARON_CLIENTS o JSON do Client ID de cada service token para o cliente (`name`, `exposed`,
-  // `privileged`, `ownerClaims`). Vazios, ninguém entra: as rotas fora do webhook respondem 401, ou
-  // 500 sem a configuração dos clientes.
+  // `privileged`, `ownerClaims`). Vazios, ninguém entra: as rotas fora do webhook e do /health
+  // respondem 401, ou 500 sem a configuração dos clientes.
+  // ZIKARON_ENV e ZIKARON_COMMIT são o ambiente e o commit publicados, que o /health devolve; o
+  // deploy (.github/workflows/deploy.yml) também os passa como `--var`.
   "vars": {
     "GITHUB_APP_ID": "",
     "GITHUB_INSTALLATION_ID": "",
     "VAULT_REPOSITORY": "",
     "ACCESS_TEAM_DOMAIN": "",
     "ACCESS_AUD": "",
-    "ZIKARON_CLIENTS": ""
+    "ZIKARON_CLIENTS": "",
+    "ZIKARON_ENV": "",
+    "ZIKARON_COMMIT": ""
   },
   "durable_objects": {
     "bindings": [{ "name": "VAULT", "class_name": "Vault" }]
@@ -29,9 +36,9 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Vault"] }],
   "env": {
     // O staging (Story 1.8): a CI publica a cada merge na main, contra o cofre de teste. Fica no
-    // workers.dev, com o Cloudflare Access na frente (ligado no painel) e o webhook do GitHub num
-    // caminho de bypass. Bindings e vars não são herdados entre ambientes: vão repetidos aqui, e os
-    // valores entram como `--var` no deploy (.github/workflows/staging.yml).
+    // workers.dev, com o Cloudflare Access na frente (ligado no painel) e o webhook do GitHub e o
+    // /health em caminhos de bypass. Bindings e vars não são herdados entre ambientes: vão
+    // repetidos aqui, e os valores entram como `--var` no deploy (.github/workflows/deploy.yml).
     "staging": {
       "name": "zikaron-staging",
       "workers_dev": true,
@@ -42,7 +49,30 @@
         "VAULT_REPOSITORY": "",
         "ACCESS_TEAM_DOMAIN": "",
         "ACCESS_AUD": "",
-        "ZIKARON_CLIENTS": ""
+        "ZIKARON_CLIENTS": "",
+        "ZIKARON_ENV": "",
+        "ZIKARON_COMMIT": ""
+      },
+      "durable_objects": {
+        "bindings": [{ "name": "VAULT", "class_name": "Vault" }]
+      }
+    },
+    // A produção (Story 1.9): só por release, por ordem do dono (.github/workflows/producao.yml),
+    // contra o cofre de verdade (docs/producao.md). Como o staging: workers.dev, o Access na
+    // frente, o webhook e o /health em bypass, e os valores como `--var` no deploy.
+    "producao": {
+      "name": "zikaron",
+      "workers_dev": true,
+      "preview_urls": false,
+      "vars": {
+        "GITHUB_APP_ID": "",
+        "GITHUB_INSTALLATION_ID": "",
+        "VAULT_REPOSITORY": "",
+        "ACCESS_TEAM_DOMAIN": "",
+        "ACCESS_AUD": "",
+        "ZIKARON_CLIENTS": "",
+        "ZIKARON_ENV": "",
+        "ZIKARON_COMMIT": ""
       },
       "durable_objects": {
         "bindings": [{ "name": "VAULT", "class_name": "Vault" }]

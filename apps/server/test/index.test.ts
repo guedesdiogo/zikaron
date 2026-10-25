@@ -109,6 +109,56 @@ describe("the Worker's webhook route", () => {
   });
 });
 
+describe("o /health", () => {
+  const health = (method = "GET", path = "/health") =>
+    new IncomingRequest(`${URL_BASE}${path}`, method === "GET" ? {} : { method, body: "{}" });
+
+  it("responde, sem credencial, só o status, o ambiente e o commit publicados", async () => {
+    // Fora do deploy, os dois vêm vazios do wrangler.jsonc.
+    const local = await worker.fetch(health(), env);
+    expect(local.status).toBe(200);
+    expect(local.headers.get("Content-Type")).toContain("application/json");
+    expect(await local.json()).toStrictEqual({ status: "ok", environment: "", commit: "" });
+
+    const commit = "b".repeat(40);
+    const deployed = { ...env, ZIKARON_ENV: "producao" as "", ZIKARON_COMMIT: commit as "" };
+    const response = await worker.fetch(health(), deployed);
+    expect(await response.json()).toStrictEqual({
+      status: "ok",
+      environment: "producao",
+      commit,
+    });
+  });
+
+  it("não lê a configuração dos clientes, o Access nem o cofre", async () => {
+    const { VAULT: _vault, ...rest } = env as VaultEnv;
+    const broken = {
+      ...rest,
+      ZIKARON_CLIENTS: "{",
+      ACCESS_TEAM_DOMAIN: "",
+      ACCESS_AUD: "",
+    } as unknown as VaultEnv;
+    const response = await worker.fetch(health(), broken);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toStrictEqual({ status: "ok", environment: "", commit: "" });
+  });
+
+  it("deixa os outros métodos e os caminhos parecidos para o Access, que os recusa sem credencial", async () => {
+    for (const request of [
+      health("POST"),
+      health("PUT"),
+      health("GET", "/health/"),
+      health("GET", "/health/x"),
+      health("GET", "/healthz"),
+      health("GET", "/v1/health"),
+    ]) {
+      const response = await worker.fetch(request, env);
+      expect(response.status, `${request.method} ${request.url}`).toBe(401);
+      expect(await response.json()).toEqual({ error: "unauthorized" });
+    }
+  });
+});
+
 describe("o limite do corpo do webhook", () => {
   it("recusa um corpo grande demais antes de conferir a assinatura", async () => {
     const big = "x".repeat(MAX_WEBHOOK_BYTES + 1);
