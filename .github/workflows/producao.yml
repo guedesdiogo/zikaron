@@ -1,55 +1,58 @@
-# Produção por release (prumo AMB-05 e D21), do exemplo do prumo (forma do play-x9). O passo a
-# passo e o que o dono cria antes estão no docs/producao.md.
+# Production by release (prumo AMB-05 and D21), from the prumo example (the play-x9 shape). The
+# step by step and what the owner creates beforehand are in docs/production.md.
 #
-# A produção sai quando o dono pede, como uma release do GitHub: publicar a release vX.Y.Z
-# publica o commit da tag dela. Uma pré-release não publica nada. O agente cria a release com
+# Production goes out when the owner asks, as a GitHub release: publishing the vX.Y.Z release
+# publishes its tag's commit. A pre-release publishes nothing. The agent creates the release with
 #   .github/scripts/producao.sh release <patch|minor|major|vX.Y.Z> --publicar
-# (deploy de produção: só com a ordem do dono no turno; o git-guard F confere). Voltar atrás, ou
-# forçar a trava do `critico`, é um Run workflow da main com a tag:
+# (a production deploy: only with the owner's order in the turn; git-guard F checks it). Rolling
+# back, or forcing the `critico` lock, is a Run workflow from main with the tag:
 #   gh workflow run producao.yml --ref main -f tag=v0.1.0
 #
-# Variáveis do repo: PRUMO_DONOS (quem pede a produção, separados por vírgula) e PRUMO_MENTOR (quem
-# dá o «Aceite», padrão guedesdiogo). No environment producao, que aceita deploy só da main e das
-# tags v*: a variável VAULT_REPOSITORY e os segredos do deploy.yml, com o PRODUCAO_URL no lugar do
-# STAGING_URL. O repo é público: o endereço do Worker é segredo, nunca variável.
+# Repo variables: PRUMO_DONOS (who requests production, comma-separated) and PRUMO_MENTOR (who
+# gives the «Aceite», default guedesdiogo). In the producao environment, which accepts deploys only
+# from main and the v* tags: the VAULT_REPOSITORY variable and the deploy.yml secrets, with
+# PRODUCAO_URL in place of STAGING_URL. The repo is public: the Worker's address is a secret, never
+# a variable.
 
-# O producao.sh lê a tag que está em produção pelo nome do último run verde. O run de uma
-# pré-release pula todos os jobs, por isso leva outro nome e nunca conta como produção.
-run-name: ${{ github.event.release.prerelease && 'Pré-release' || 'Produção' }} ${{ github.event.release.tag_name || inputs.tag }}
+# producao.sh reads the tag in production from the name of the last green run, so the «Produção»
+# prefix stays as it is. A pre-release run skips every job, so it carries another name and never
+# counts as production.
+run-name: ${{ github.event.release.prerelease && 'Pre-release' || 'Produção' }} ${{ github.event.release.tag_name || inputs.tag }}
 on:
   release:
     types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag da release (vX.Y.Z)
+        description: Release tag (vX.Y.Z)
         type: string
         required: true
       forcar:
-        description: Publica mesmo com issue `critico` sem o «Aceite» do mentor (só um dono, com o motivo)
+        description: Publishes even with a `critico` issue without the mentor's «Aceite» (an owner only, with the reason)
         type: boolean
         default: false
       motivo:
-        description: Por que forçar
+        description: Why force
         type: string
         default: ""
 
 permissions:
   contents: read
 
-# Um run de produção por vez, e o que está rodando sempre termina. Não `deploy-producao`: é o grupo
-# do job do deploy.yml, e um workflow que divide o grupo com um job dele mesmo trava. Uma
-# pré-release tem um grupo só dela, para nunca tomar o lugar de um run de produção na fila.
+# One production run at a time, and the one running always finishes. Not `deploy-producao`: that is
+# the group of the deploy.yml job, and a workflow that shares the group with one of its own jobs
+# deadlocks. A pre-release has a group of its own, so it never takes a production run's place in
+# the queue.
 concurrency:
   group: ${{ github.event.release.prerelease && format('pre-{0}', github.run_id) || 'producao' }}
   cancel-in-progress: false
 
 jobs:
-  # Falha o run em vez de pulá-lo, para um pedido recusado nunca parecer um deploy. Só a
-  # pré-release é pulada: publicá-la não pede produção. As entradas e os dados do evento chegam
-  # aos scripts só pelo env, nunca dentro deles.
+  # Fails the run instead of skipping it, so a refused request never looks like a deploy. Only the
+  # pre-release is skipped: publishing it does not ask for production. The inputs and the event
+  # data reach the scripts only through env, never inside them.
   gate:
-    name: Confere a release
+    name: Check the release
     if: github.event_name != 'release' || !github.event.release.prerelease
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -60,30 +63,30 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       sha: ${{ steps.release.outputs.sha }}
     steps:
-      # Quem publicou a release ou clicou em Run workflow; num re-run, quem rodou de novo.
-      - name: Quem pediu é dono
+      # Whoever published the release or clicked Run workflow; on a re-run, whoever ran it again.
+      - name: The requester is an owner
         env:
           DONOS: ${{ vars.PRUMO_DONOS }}
           ATOR: ${{ github.triggering_actor }}
         run: |
           if ! tr -s ',[:blank:]' '\n' <<<"$DONOS" | grep -qixF -- "$ATOR"; then
-            echo "$ATOR não está na variável PRUMO_DONOS: só um dono pede a produção." >&2
+            echo "$ATOR is not in the PRUMO_DONOS variable: only an owner requests production." >&2
             exit 1
           fi
-      - name: Run workflow só da main
+      - name: Run workflow only from main
         if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
         run: |
-          echo "O Run workflow da produção sai da main, e este veio de $GITHUB_REF." >&2
+          echo "The production Run workflow goes out from main, and this one came from $GITHUB_REF." >&2
           exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      # A tag decide o que sai, então voltar atrás é o mesmo run com uma tag mais velha. O CI verde
-      # é o do push na main. Aqui o staging é outro workflow (staging.yml), que publica depois de
-      # cada CI verde da main e não entra nesta conferência: ela não prova que o staging recebeu o
-      # commit (AMB-04), só que o CI dele passou.
-      - name: Release publicada, na main e com o CI verde
+      # The tag decides what goes out, so rolling back is the same run with an older tag. The green
+      # CI is that of the push to main. Here staging is another workflow (staging.yml), which
+      # publishes after each green CI on main and is not part of this check: it does not prove that
+      # staging received the commit (AMB-04), only that its CI passed.
+      - name: Published release, on main, with green CI
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,43 +96,43 @@ jobs:
           ATOR: ${{ github.triggering_actor }}
         run: |
           if [ "$FORCAR" = true ] && [ -z "${MOTIVO//[[:space:]]/}" ]; then
-            echo "Forçar exige o motivo." >&2
+            echo "Forcing requires the reason." >&2
             exit 1
           fi
-          # Até casar, a tag é texto livre e não vai para o log: o runner lê linhas «::» como comandos.
+          # Until it matches, the tag is free text and stays out of the log: the runner reads «::» lines as commands.
           if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "A tag precisa ser vX.Y.Z." >&2
+            echo "The tag must be vX.Y.Z." >&2
             exit 1
           fi
           if ! publicada=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '(.draft or .prerelease) | not'); then
-            echo "A $TAG não é de uma release do GitHub." >&2
+            echo "$TAG is not a GitHub release's tag." >&2
             exit 1
           fi
           if [ "$publicada" != true ]; then
-            echo "A release $TAG é rascunho ou pré-release: não vai para a produção." >&2
+            echo "The $TAG release is a draft or a pre-release: it does not go to production." >&2
             exit 1
           fi
           sha=$(git rev-parse --verify "refs/tags/$TAG^{commit}")
           if ! git merge-base --is-ancestor "$sha" origin/main; then
-            echo "O commit $sha da $TAG não está na main." >&2
+            echo "The commit $sha of $TAG is not on main." >&2
             exit 1
           fi
           verdes=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&branch=main&event=push&status=success&per_page=1" --jq .total_count)
           if ! [ "${verdes:-0}" -ge 1 ] 2>/dev/null; then
-            echo "O CI da main não passou no commit $sha da $TAG." >&2
+            echo "The main CI did not pass on the commit $sha of $TAG." >&2
             exit 1
           fi
           echo "tag=$TAG" >>"$GITHUB_OUTPUT"
           echo "sha=$sha" >>"$GITHUB_OUTPUT"
-          echo "Produção: $TAG, commit \`$sha\`, pedida por $ATOR." >>"$GITHUB_STEP_SUMMARY"
+          echo "Production: $TAG, commit \`$sha\`, requested by $ATOR." >>"$GITHUB_STEP_SUMMARY"
 
-  # Uma release que traz issue `critico` sem o «Aceite» do mentor para aqui, antes do deploy, e o
-  # resumo do run lista as issues (KAN-14). O intervalo começa na tag que está em produção, então
-  # uma release que parou continua parando as seguintes. Conta como aceita a issue cujo PR o
-  # próprio mentor abriu. Com `forcar`, um dono publica mesmo assim: as issues recebem o
-  # comentário «Aceite forçado» e o mentor, uma issue de revisão retroativa.
+  # A release that brings a `critico` issue without the mentor's «Aceite» stops here, before the
+  # deploy, and the run summary lists the issues (KAN-14). The range starts at the tag in
+  # production, so a release that stopped keeps stopping the following ones. An issue whose PR the
+  # mentor opened counts as accepted. With `forcar`, an owner publishes anyway: the issues get the
+  # «Aceite forçado» comment and the mentor, a retroactive review issue.
   trava:
-    name: Trava do critico
+    name: Critico lock
     needs: gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -143,7 +146,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Issues critico com o Aceite do mentor
+      - name: Critico issues with the mentor's Aceite
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -152,7 +155,7 @@ jobs:
           SHA: ${{ needs.gate.outputs.sha }}
           FORCAR: ${{ inputs.forcar }}
           MOTIVO: ${{ inputs.motivo }}
-        # O intervalo termina no sha que o gate leu, o que vai ser publicado; a tag só aparece.
+        # The range ends at the sha the gate read, the one to be published; the tag only shows up.
         run: |
           if [ "$FORCAR" = true ]; then
             .github/scripts/producao.sh forcar "$TAG" "$SHA" "$MOTIVO"
@@ -160,10 +163,10 @@ jobs:
             .github/scripts/producao.sh trava "$TAG" "$SHA"
           fi
 
-  # Os segredos vão por nome: dentro do job do deploy.yml, que declara o environment producao,
-  # vale o valor do environment, nunca o do staging.
+  # The secrets go by name: inside the deploy.yml job, which declares the producao environment,
+  # the environment's value applies, never staging's.
   producao:
-    name: Produção
+    name: Production
     needs: [gate, trava]
     uses: ./.github/workflows/deploy.yml
     with:

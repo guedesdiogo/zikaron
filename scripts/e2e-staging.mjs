@@ -1,13 +1,14 @@
-// O roteiro ponta a ponta do staging (Story 1.8), contra o cofre de teste, só com dados sintéticos.
-// Roda na CI (.github/workflows/e2e-staging.yml), com as credenciais de teste do environment
-// staging; nenhum valor é impresso. Três clientes de teste, como `ZIKARON_CLIENTS` os configura:
-// `noah` (exposed, ownerClaims), `alan` (privileged) e `outro` (nenhum dos dois).
+// The staging end-to-end run (Story 1.8), against the test vault, with synthetic data only. It runs
+// in CI (.github/workflows/e2e-staging.yml), with the test credentials of the staging environment;
+// no value is printed. Three test clients, as `ZIKARON_CLIENTS` configures them: `noah` (exposed,
+// ownerClaims), `alan` (privileged) and `outro` (neither). The notes it writes keep Portuguese
+// synthetic text, like the test fixtures.
 import { Buffer } from "node:buffer";
 import process from "node:process";
 
 const env = (name) => {
   const value = process.env[name];
-  if (value === undefined || value === "") throw new Error(`falta ${name}`);
+  if (value === undefined || value === "") throw new Error(`missing ${name}`);
   return value;
 };
 
@@ -49,14 +50,14 @@ async function call(client, route, body, headers = {}) {
   try {
     json = await response.json();
   } catch {
-    // A borda do Access responde sem JSON.
+    // The Access edge answers without JSON.
   }
   return { status: response.status, json };
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Espera até `test` dar verdadeiro, perguntando a cada 3 s, por até `seconds`. */
+/** Waits until `test` is true, asking every 3 s, for up to `seconds`. */
 async function until(seconds, test) {
   const end = Date.now() + seconds * 1000;
   for (;;) {
@@ -80,11 +81,11 @@ async function github(method, path, body) {
   return response.json();
 }
 
-/** Uma chamada que tem de dar certo: 200 com JSON; senão o roteiro para, sem passar em falso. */
+/** A call that has to succeed: 200 with JSON; otherwise the run stops, without a false pass. */
 async function answered(client, route, body, headers) {
   const result = await call(client, route, body, headers);
   if (result.status !== 200 || result.json === null) {
-    throw new Error(`${route} respondeu ${result.status}`);
+    throw new Error(`${route} answered ${result.status}`);
   }
   return result.json;
 }
@@ -93,21 +94,21 @@ const seen = async (client, path) => {
   const json = await answered(client, "/v1/read", { path });
   if (json.ok === true) return true;
   if (json.reason === "not_found") return false;
-  throw new Error(`/v1/read recusou: ${json.reason}`);
+  throw new Error(`/v1/read refused: ${json.reason}`);
 };
 const searched = async (client, path) => {
   const json = await answered(client, "/v1/search", { query: MARK, k: 10 });
-  if (json.ok !== true || !Array.isArray(json.notes)) throw new Error("/v1/search falhou");
+  if (json.ok !== true || !Array.isArray(json.notes)) throw new Error("/v1/search failed");
   return json.notes.some((note) => note.path === path);
 };
 const recalled = async (client, path) => {
   const json = await answered(client, "/v1/recall", { question: `${MARK} sintético` });
-  if (!Array.isArray(json.paths)) throw new Error("/v1/recall falhou");
+  if (!Array.isArray(json.paths)) throw new Error("/v1/recall failed");
   return json.paths.includes(path);
 };
 const pending = async (client, path) => {
   const json = await answered(client, "/v1/pending", {});
-  if (json.ok !== true || !Array.isArray(json.notes)) throw new Error("/v1/pending falhou");
+  if (json.ok !== true || !Array.isArray(json.notes)) throw new Error("/v1/pending failed");
   return json.notes.some((note) => note.path === path);
 };
 const mcpSearch = async (client, path) => {
@@ -123,17 +124,17 @@ const mcpSearch = async (client, path) => {
     { Accept: "application/json, text/event-stream" },
   );
   if (json.error !== undefined || json.result === undefined || json.result.isError === true) {
-    throw new Error("memory_search falhou");
+    throw new Error("memory_search failed");
   }
   return JSON.stringify(json.result).includes(path);
 };
 
 async function main() {
-  // 1. Sem credencial, a borda (ou o Worker) recusa.
+  // 1. Without a credential, the edge (or the Worker) refuses.
   const anonymous = await call(null, "/v1/pending", {});
-  check("sem credencial: recusado na borda", [401, 302, 403].includes(anonymous.status));
+  check("no credential: refused at the edge", [401, 302, 403].includes(anonymous.status));
 
-  // 2. O noah grava uma página de fora e algo que o dono disse.
+  // 2. noah writes an outside page and something the owner said.
   const outside = await call("noah", "/v1/write", {
     source: "external",
     evidence: `e2e:${RUN}:pagina`,
@@ -141,7 +142,7 @@ async function main() {
     body: "Conteúdo sintético lido de uma página de teste.",
     kind: "note",
   });
-  check("noah grava uma nota de fora", outside.json?.ok === true);
+  check("noah writes an outside note", outside.json?.ok === true);
   const said = await call("noah", "/v1/write", {
     source: "owner",
     evidence: `e2e:${RUN}:mensagem`,
@@ -149,11 +150,11 @@ async function main() {
     body: "O dono disse uma preferência sintética.",
     kind: "preference",
   });
-  check("noah grava o que o dono disse", said.json?.ok === true);
+  check("noah writes what the owner said", said.json?.ok === true);
   const outsidePath = outside.json?.path ?? "";
   const saidPath = said.json?.path ?? "";
 
-  // 3. Um contexto de rotina agendada não grava.
+  // 3. A scheduled-routine context does not write.
   const cron = await call("noah", "/v1/write", {
     source: "owner",
     context: "cron",
@@ -161,42 +162,42 @@ async function main() {
     body: "Não deveria entrar.",
     kind: "note",
   });
-  check("uma rotina agendada não grava", cron.json?.reason === "cron");
+  check("a scheduled routine does not write", cron.json?.reason === "cron");
 
-  // 4. Depois do commit, o noah vê as duas.
+  // 4. After the commit, noah sees both.
   check(
-    "noah vê as duas depois do commit",
+    "noah sees both after the commit",
     await until(
       90,
       async () => (await seen("noah", outsidePath)) && (await seen("noah", saidPath)),
     ),
   );
 
-  // 5. O alan não vê a nota de fora em nenhum caminho, e vê o que o dono disse.
-  check("alan não lê a nota de fora", !(await seen("alan", outsidePath)));
-  check("alan não acha a nota de fora na busca", !(await searched("alan", outsidePath)));
-  check("alan não recebe a nota de fora no recall", !(await recalled("alan", outsidePath)));
-  check("alan não vê a nota de fora nas pendentes", !(await pending("alan", outsidePath)));
-  check("alan não acha a nota de fora pelo MCP", !(await mcpSearch("alan", outsidePath)));
-  check("noah acha a nota de fora na busca", await searched("noah", outsidePath));
-  check("noah acha a nota de fora pelo MCP", await mcpSearch("noah", outsidePath));
-  check("noah vê a nota de fora nas pendentes", await pending("noah", outsidePath));
-  check("alan lê o que o dono disse", await seen("alan", saidPath));
-  check("outro não vê a nota de fora", !(await seen("outro", outsidePath)));
+  // 5. alan does not see the outside note on any path, and sees what the owner said.
+  check("alan does not read the outside note", !(await seen("alan", outsidePath)));
+  check("alan does not find the outside note in search", !(await searched("alan", outsidePath)));
+  check("alan does not get the outside note in recall", !(await recalled("alan", outsidePath)));
+  check("alan does not see the outside note in pending", !(await pending("alan", outsidePath)));
+  check("alan does not find the outside note over MCP", !(await mcpSearch("alan", outsidePath)));
+  check("noah finds the outside note in search", await searched("noah", outsidePath));
+  check("noah finds the outside note over MCP", await mcpSearch("noah", outsidePath));
+  check("noah sees the outside note in pending", await pending("noah", outsidePath));
+  check("alan reads what the owner said", await seen("alan", saidPath));
+  check("outro does not see the outside note", !(await seen("outro", outsidePath)));
 
-  // 6. O dono confirma a nota de fora no GitHub, tirando o review: pending.
+  // 6. The owner confirms the outside note on GitHub, removing the review: pending.
   const file = await github("GET", `contents/${outsidePath}`);
   const text = Buffer.from(file.content, "base64").toString("utf8");
   const confirmed = text.replace(/^ {2}review: pending\n/m, "");
-  check("a nota de fora estava pendente", confirmed !== text);
+  check("the outside note was pending", confirmed !== text);
   await github("PUT", `contents/${outsidePath}`, {
     message: "E2E: o dono confirma uma nota",
     content: Buffer.from(confirmed, "utf8").toString("base64"),
     sha: file.sha,
   });
-  check("o «sim» no cofre a mostra para o alan", await until(120, () => seen("alan", outsidePath)));
+  check("the \"yes\" in the vault shows it to alan", await until(120, () => seen("alan", outsidePath)));
 
-  // 7. Uma nota escrita no GitHub chega ao recall pelo webhook.
+  // 7. A note written on GitHub reaches the recall through the webhook.
   const ownersPath = `memory/notes/e2e-${RUN}-do-dono.md`;
   await github("PUT", `contents/${ownersPath}`, {
     message: "E2E: o dono escreve uma nota",
@@ -206,15 +207,15 @@ async function main() {
     ).toString("base64"),
   });
   check(
-    "a edição do dono chega ao recall do alan",
+    "the owner's edit reaches alan's recall",
     await until(120, () => recalled("alan", ownersPath)),
   );
 
-  console.log(`\n${passed}/${passed + failures.length} passaram (rodada ${RUN})`);
+  console.log(`\n${passed}/${passed + failures.length} passed (run ${RUN})`);
   if (failures.length > 0) process.exitCode = 1;
 }
 
 main().catch((error) => {
-  console.error(`erro: ${error instanceof Error ? error.message : "desconhecido"}`);
+  console.error(`error: ${error instanceof Error ? error.message : "unknown"}`);
   process.exitCode = 1;
 });

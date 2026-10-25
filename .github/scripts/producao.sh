@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
-# Produção por release (prumo AMB-05, KAN-14 e D21). Do exemplo do prumo (forma do play-x9), com o
-# workflow de produção em PRUMO_PRODUCAO_WORKFLOW (padrão producao.yml).
+# Production by release (prumo AMB-05, KAN-14 and D21). From the prumo example (the play-x9 shape),
+# with the production workflow in PRUMO_PRODUCAO_WORKFLOW (default producao.yml).
 #
 #   .github/scripts/producao.sh release <patch|minor|major|vX.Y.Z> [--alvo <sha>] [--rascunho|--publicar]
-#       Sem --rascunho nem --publicar, só imprime a tag e as notas. --publicar é deploy de
-#       produção: só com a ordem do dono.
-#   .github/scripts/producao.sh notas <alvo> [<tag anterior>]
-#   .github/scripts/producao.sh trava <tag> <sha>            (CI) falha se o <sha> leva à produção uma issue `critico` sem «Aceite»
-#   .github/scripts/producao.sh forcar <tag> <sha> <motivo>  (CI) registra o aceite forçado e abre a revisão retroativa
-#       O <sha> é o commit da tag como o gate o leu: ele fecha o intervalo; a tag só aparece.
+#       Without --rascunho or --publicar, it only prints the tag and the notes. --publicar is a
+#       production deploy: only with the owner's order.
+#   .github/scripts/producao.sh notas <target> [<previous tag>]
+#   .github/scripts/producao.sh trava <tag> <sha>            (CI) fails if <sha> takes a `critico` issue without «Aceite» to production
+#   .github/scripts/producao.sh forcar <tag> <sha> <reason>  (CI) records the forced acceptance and opens the retroactive review
+#       <sha> is the tag's commit as the gate read it: it closes the range; the tag only shows up.
 #
-# Precisa do git com as tags, do gh autenticado, do jq e do bash 4.4 ou mais novo. GH_REPO escolhe
-# o repositório (padrão: o do checkout).
+# Needs git with the tags, an authenticated gh, jq and bash 4.4 or newer. GH_REPO picks the
+# repository (default: the checkout's).
 set -euo pipefail
-# Uma falha dentro de $(…) também para o script: senão, uma chamada ao GitHub que falha vira «nenhuma issue».
+# A failure inside $(…) also stops the script: otherwise a failing GitHub call becomes "no issue".
 shopt -s inherit_errexit
 
-# O CI da main: o staging.yml publica o staging depois de cada run verde dele, e o último run verde
-# é o alvo padrão de uma release. A conferência é a do CI; a do staging fica com o staging.yml.
+# The main CI: staging.yml publishes staging after each of its green runs, and the last green run
+# is a release's default target. The check is CI's; staging's stays with staging.yml.
 STAGING_WORKFLOW="${PRUMO_STAGING_WORKFLOW:-ci.yml}"
-# Publicado por uma release; os nomes dos runs dizem que tag está em produção.
+# Published by a release; the runs' names say which tag is in production.
 PRODUCAO_WORKFLOW="${PRUMO_PRODUCAO_WORKFLOW:-producao.yml}"
 MENTOR="${PRUMO_MENTOR:-guedesdiogo}"
 REPO="${GH_REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
@@ -27,18 +27,18 @@ SEMVER='^v[0-9]+\.[0-9]+\.[0-9]+$'
 
 die() { echo "producao.sh: $*" >&2; exit 1; }
 
-# A tag semver estável antes de <ref> (vazia na primeira release). Uma pré-release nunca chega à
-# produção, então a tag dela não encurta o intervalo.
+# The stable semver tag before <ref> (empty on the first release). A pre-release never reaches
+# production, so its tag does not shorten the range.
 tag_anterior() {
   git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude '*-*' "$1^" 2>/dev/null || true
 }
 
-# A tag que está em produção: a do nome («Produção vX.Y.Z») do último run verde do workflow de
-# produção. Sem esse run, vazia: o histórico inteiro, porque nada chegou à produção ainda. A trava
-# começa aqui, não na tag anterior: uma release que parou continua parando as seguintes, a primeira
-# também. Só dois tipos de run contam, nunca o de um workflow mudado em outra branch: um Run
-# workflow da main, e um run de release cuja branch é a tag do nome e cujo commit é o da tag. Uma
-# tag que falta no checkout não pode começar um intervalo: de novo o histórico inteiro.
+# The tag in production: the one in the name («Produção vX.Y.Z») of the production workflow's last
+# green run. Without that run, empty: the whole history, because nothing has reached production yet.
+# The lock starts here, not at the previous tag: a release that stopped keeps stopping the following
+# ones, the first one too. Only two kinds of run count, never one of a workflow changed on another
+# branch: a Run workflow from main, and a release run whose branch is the tag in the name and whose
+# commit is the tag's. A tag missing from the checkout cannot start a range: the whole history again.
 base_producao() {
   local runs evento titulo sha tag re='^Produção (v[0-9]+\.[0-9]+\.[0-9]+)$'
   runs="$(gh run list -R "$REPO" --workflow "$PRODUCAO_WORKFLOW" --status success --limit 50 --json displayTitle,headBranch,event,headSha \
@@ -55,7 +55,7 @@ base_producao() {
   done <<<"$runs"
 }
 
-# Os PRs que entraram na main entre <anterior> e <alvo>, com as issues que cada um fecha, em JSON:
+# The PRs that went into main between <previous> and <target>, with the issues each one closes, as JSON:
 # [{pr, titulo, autor, issues: [{repo, numero, titulo, url, critico}]}]
 prs_e_issues() {
   local anterior="$1" alvo="$2" range lista sha q i
@@ -75,11 +75,11 @@ prs_e_issues() {
     gh api graphql -f owner="${REPO%/*}" -f name="${REPO#*/}" \
       -f query="query(\$owner: String!, \$name: String!) { repository(owner: \$owner, name: \$name) { defaultBranchRef { name } $q } }"
   done | jq -s '
-    # Uma lista cortada no limite da consulta esconderia um PR, uma issue ou o label `critico`: falha.
+    # A list cut at the query's limit would hide a PR, an issue or the `critico` label: fail.
     ( .[].data.repository | to_entries[] | select(.key | startswith("c")) | .value.associatedPullRequests
       | ., .nodes[].closingIssuesReferences, .nodes[].closingIssuesReferences.nodes[].labels
       | select(.totalCount != (.nodes | length))
-      | error("uma lista do GraphQL veio cortada (PRs, issues ou labels além do limite da consulta)") ),
+      | error("a GraphQL list came cut (PRs, issues or labels beyond the query limit)") ),
     ( [ .[].data.repository as $r | $r | to_entries[] | select(.key | startswith("c")) | .value.associatedPullRequests.nodes[]
         | select(.merged and .baseRefName == $r.defaultBranchRef.name)
         | { pr: .number, titulo: .title, autor: .author.login,
@@ -88,16 +88,16 @@ prs_e_issues() {
       | unique_by(.pr) | sort_by(.pr) )'
 }
 
-# O link do «Aceite» do mentor na issue, ou vazio.
+# The link of the mentor's «Aceite» on the issue, or empty.
 aceite() {
   gh api --paginate "repos/$1/issues/$2/comments" |
     jq -r --arg mentor "$MENTOR" '.[] | select(.user.login == $mentor and (.body | startswith("**Aceite** ·"))) | .html_url' |
     tail -n 1
 }
 
-# As issues `critico` sem «Aceite», uma por linha: repo<TAB>número<TAB>título. Neste repo, todo PR
-# sai da conta do mentor, inclusive os que um agente abre: um PR aberto por ela não conta como
-# aceite. Só o comentário «Aceite» vale (diferença em relação ao exemplo do prumo).
+# The `critico` issues without «Aceite», one per line: repo<TAB>number<TAB>title. In this repo, every
+# PR comes from the mentor's account, including the ones an agent opens: a PR opened from it does not
+# count as acceptance. Only the «Aceite» comment counts (a difference from the prumo example).
 criticas_sem_aceite() {
   jq -r '
     [.[] | .issues[] | select(.critico)]
@@ -112,24 +112,24 @@ notas() {
   local alvo="$1" anterior dados ref
   if (($# > 1)); then anterior="$2"; else anterior="$(tag_anterior "$alvo")"; fi
   dados="$(prs_e_issues "$anterior" "$alvo")"
-  echo "Alvo \`$(git rev-parse --short "$alvo")\`${anterior:+ · desde $anterior}"
+  echo "Target \`$(git rev-parse --short "$alvo")\`${anterior:+ · since $anterior}"
   echo
   echo "## PRs"
-  jq -r 'if length == 0 then "Nenhum." else .[] | "- #\(.pr) \(.titulo)" end' <<<"$dados"
+  jq -r 'if length == 0 then "None." else .[] | "- #\(.pr) \(.titulo)" end' <<<"$dados"
   echo
   echo "## Issues"
-  jq -r '[.[].issues[]] | unique_by(.repo, .numero) | if length == 0 then "Nenhuma." else .[] |
+  jq -r '[.[].issues[]] | unique_by(.repo, .numero) | if length == 0 then "None." else .[] |
     "- \(.url) \(.titulo)\(if .critico then " · `critico`" else "" end)" end' <<<"$dados"
   if jq -e '[.[].issues[] | select(.critico)] | length > 0' <<<"$dados" >/dev/null; then
     echo
-    echo "## Aceite do mentor"
+    echo "## The mentor's Aceite"
     jq -r '
       [.[].issues[] | select(.critico)]
       | group_by(.repo, .numero)[]
       | [.[0].repo, (.[0].numero | tostring)] | @tsv' <<<"$dados" |
       while IFS=$'\t' read -r repo numero; do
         ref="$(aceite "$repo" "$numero")"
-        echo "- $repo#$numero: ${ref:-falta (o deploy de produção para)}"
+        echo "- $repo#$numero: ${ref:-missing (the production deploy stops)}"
       done
   fi
 }
@@ -139,24 +139,24 @@ release() {
   shift || true
   while (($#)); do
     case "$1" in
-      --alvo) alvo="${2:?--alvo pede o sha}"; shift 2 ;;
+      --alvo) alvo="${2:?--alvo takes the sha}"; shift 2 ;;
       --rascunho) modo="rascunho"; shift ;;
       --publicar) modo="publicar"; shift ;;
-      *) die "argumento desconhecido: $1" ;;
+      *) die "unknown argument: $1" ;;
     esac
   done
-  [[ -n "$versao" ]] || die "uso: producao.sh release <patch|minor|major|vX.Y.Z> [--alvo <sha>] [--rascunho|--publicar]"
+  [[ -n "$versao" ]] || die "usage: producao.sh release <patch|minor|major|vX.Y.Z> [--alvo <sha>] [--rascunho|--publicar]"
   git fetch -q origin --tags
   if [[ -z "$alvo" ]]; then
     alvo="$(gh run list -R "$REPO" --workflow "$STAGING_WORKFLOW" --branch main --event push --status success --limit 1 --json headSha -q '.[0].headSha')"
-    [[ -n "$alvo" ]] || die "nenhum run verde do $STAGING_WORKFLOW na main; passe --alvo"
+    [[ -n "$alvo" ]] || die "no green $STAGING_WORKFLOW run on main; pass --alvo"
   fi
   alvo="$(git rev-parse --verify "$alvo^{commit}")"
   anterior="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude '*-*' "$alvo" 2>/dev/null || true)"
-  if [[ -n "$anterior" && "$(git rev-parse "$anterior^{commit}")" == "$alvo" ]]; then die "$alvo já é a $anterior"; fi
+  if [[ -n "$anterior" && "$(git rev-parse "$anterior^{commit}")" == "$alvo" ]]; then die "$alvo is already $anterior"; fi
   case "$versao" in
     patch | minor | major)
-      [[ -n "$anterior" ]] || die "primeira release: diga a versão (a primeira é a v0.1.0)"
+      [[ -n "$anterior" ]] || die "first release: give the version (the first one is v0.1.0)"
       IFS=. read -r x y z <<<"${anterior#v}"
       case "$versao" in
         patch) tag="v$x.$y.$((z + 1))" ;;
@@ -164,30 +164,30 @@ release() {
         major) tag="v$((x + 1)).0.0" ;;
       esac ;;
     *)
-      [[ "$versao" =~ $SEMVER ]] || die "versão inválida: $versao (use patch, minor, major ou vX.Y.Z)"
+      [[ "$versao" =~ $SEMVER ]] || die "invalid version: $versao (use patch, minor, major or vX.Y.Z)"
       tag="$versao" ;;
   esac
-  if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then die "a tag $tag já existe"; fi
+  if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then die "the tag $tag already exists"; fi
 
   corpo="$(notas "$alvo" "$anterior")"
   printf '# %s\n\n%s\n' "$tag" "$corpo"
   [[ "$modo" != "previa" ]] || return 0
-  # Publicar faz o deploy: o que o gate confere, o gatilho e a trava, antes de a release existir.
+  # Publishing deploys: what the gate checks, the trigger and the lock, before the release exists.
   if [[ "$modo" == "publicar" ]]; then
-    git merge-base --is-ancestor "$alvo" origin/main || die "o alvo ${alvo:0:7} não está na origin/main"
+    git merge-base --is-ancestor "$alvo" origin/main || die "the target ${alvo:0:7} is not on origin/main"
     verdes="$(gh api "repos/$REPO/actions/workflows/$STAGING_WORKFLOW/runs?head_sha=$alvo&branch=main&event=push&status=success&per_page=1" --jq .total_count)"
-    [ "${verdes:-0}" -ge 1 ] 2>/dev/null || die "o $STAGING_WORKFLOW não passou no alvo ${alvo:0:7} na main: o gate pararia"
+    [ "${verdes:-0}" -ge 1 ] 2>/dev/null || die "$STAGING_WORKFLOW did not pass on the target ${alvo:0:7} on main: the gate would stop"
     workflow="$(git show "$alvo:.github/workflows/$PRODUCAO_WORKFLOW" 2>/dev/null || true)"
     grep -qE '^[[:space:]]+release:[[:space:]]*$' <<<"$workflow" ||
-      die "o $PRODUCAO_WORKFLOW do alvo ${alvo:0:7} não tem o gatilho release: a release não publicaria nada. Use um alvo com a produção por release"
-    # O mesmo intervalo da trava, que pode começar antes da tag anterior.
+      die "the $PRODUCAO_WORKFLOW of the target ${alvo:0:7} has no release trigger: the release would publish nothing. Use a target with production by release"
+    # The same range as the lock, which may start before the previous tag.
     base="$(base_producao)"
     dados="$(prs_e_issues "$base" "$alvo")"
     faltam="$(criticas_sem_aceite "$dados")"
     if [[ -n "$faltam" ]]; then
-      # O awk, não o `cut --output-delimiter` do exemplo, que o cut do macOS não tem.
-      die "há issue \`critico\` sem o «Aceite» do mentor desde ${base:-o início}: o deploy pararia." \
-        "Crie como --rascunho, ou o dono força pelo Run workflow com o motivo." \
+      # awk, not the example's `cut --output-delimiter`, which macOS's cut lacks.
+      die "there is a \`critico\` issue without the mentor's «Aceite» since ${base:-the start}: the deploy would stop." \
+        "Create it as --rascunho, or the owner forces it through Run workflow with the reason." \
         "Issues: $(awk -F'\t' '{print $1 "#" $2}' <<<"$faltam" | paste -sd ' ' -)"
     fi
   fi
@@ -196,42 +196,43 @@ release() {
   gh release create "$tag" -R "$REPO" --target "$alvo" --title "$tag" --notes "$corpo" "${rascunho[@]}"
 }
 
-# CI: o que o <sha> leva à produção. Escreve o resumo do job e imprime as issues sem «Aceite». Num
-# rollback para uma tag mais velha que a da produção, o intervalo é vazio e nada para.
+# CI: what <sha> takes to production. Writes the job summary and prints the issues without «Aceite».
+# On a rollback to a tag older than production's, the range is empty and nothing stops.
 trava() {
   local tag="$1" sha="$2" base dados faltam
   base="$(base_producao)"
   dados="$(prs_e_issues "$base" "$sha")"
   faltam="$(criticas_sem_aceite "$dados")"
   {
-    echo "### Trava do \`critico\` · $tag (\`${sha:0:7}\`)"
-    echo "Desde ${base:-o início do histórico}."
+    echo "### \`critico\` lock · $tag (\`${sha:0:7}\`)"
+    echo "Since ${base:-the start of the history}."
     if [[ -z "$faltam" ]]; then
-      echo "Nenhuma issue \`critico\` sem o «Aceite» do mentor."
+      echo "No \`critico\` issue without the mentor's «Aceite»."
     else
-      echo "Sem o «Aceite» do mentor ($MENTOR):"
+      echo "Without the mentor's «Aceite» ($MENTOR):"
       while IFS=$'\t' read -r repo numero titulo; do echo "- $repo#$numero $titulo"; done <<<"$faltam"
     fi
   } >>"${GITHUB_STEP_SUMMARY:-/dev/stderr}"
   printf '%s' "$faltam"
 }
 
-# A issue aberta «Revisão retroativa · <tag> · aceite forçado», ou vazio.
+# The open issue «Revisão retroativa · <tag> · aceite forçado», or empty. The title is the prumo
+# protocol's, and finding it again keeps a re-run from opening a second one.
 revisao_aberta() {
   gh issue list -R "$REPO" --state open --label critico --limit 200 --json title,url |
     jq -r --arg titulo "Revisão retroativa · $1 · aceite forçado" '[.[] | select(.title == $titulo) | .url] | first // empty'
 }
 
-# Quantos comentários «Aceite forçado» da <tag> a issue já tem.
+# How many «Aceite forçado» comments for <tag> the issue already has.
 forcadas() {
   gh api --paginate "repos/$1/issues/$2/comments" |
     jq -s -r --arg inicio "**Aceite forçado** · produção · $3 ·" '[.[][] | select(.body | startswith($inicio))] | length'
 }
 
-# Rodar de novo (um re-run) reaproveita a revisão aberta e não comenta duas vezes numa issue.
+# Running again (a re-run) reuses the open review and does not comment twice on an issue.
 forcar() {
   local tag="$1" sha="$2" motivo="$3" dono faltam run retro lista n
-  [[ -n "${motivo// /}" ]] || die "forçar exige o motivo"
+  [[ -n "${motivo// /}" ]] || die "forcing requires the reason"
   dono="${GITHUB_TRIGGERING_ACTOR:-${GITHUB_ACTOR:-?}}"
   faltam="$(trava "$tag" "$sha")"
   [[ -n "$faltam" ]] || return 0
@@ -241,13 +242,13 @@ forcar() {
   if [[ -z "$retro" ]]; then
     retro="$(gh issue create -R "$REPO" --assignee "$MENTOR" --label critico \
       --title "Revisão retroativa · $tag · aceite forçado" \
-      --body "$(printf 'O dono forçou a produção da %s sem o «Aceite» do mentor.\n\nDono: %s\nMotivo: %s\nRun: %s\n\nIssues:\n%s\n\nRevise no ambiente e comente «**Aceite** · produção · <link>» em cada issue, ou abra a correção.' \
+      --body "$(printf 'The owner forced %s into production without the «Aceite» from the mentor.\n\nOwner: %s\nReason: %s\nRun: %s\n\nIssues:\n%s\n\nReview it in the environment and comment «**Aceite** · produção · <link>» on each issue, or open the fix.' \
         "$tag" "$dono" "$motivo" "$run" "$lista")")"
   fi
   while IFS=$'\t' read -r repo numero _; do
     n="$(forcadas "$repo" "$numero" "$tag")"
     if [[ "$n" == 0 ]]; then
-      gh issue comment "$numero" -R "$repo" --body "$(printf '**Aceite forçado** · produção · %s · %s\n\nDono: %s\nMotivo: %s\nRevisão retroativa: %s' \
+      gh issue comment "$numero" -R "$repo" --body "$(printf '**Aceite forçado** · produção · %s · %s\n\nOwner: %s\nReason: %s\nRetroactive review: %s' \
         "$tag" "$run" "$dono" "$motivo" "$retro")"
     fi
   done <<<"$faltam"
@@ -257,11 +258,11 @@ cmd="${1:-}"
 shift || true
 case "$cmd" in
   release) release "$@" ;;
-  notas) notas "${1:?uso: producao.sh notas <alvo> [<tag anterior>]}" "${@:2}" ;;
+  notas) notas "${1:?usage: producao.sh notas <target> [<previous tag>]}" "${@:2}" ;;
   trava)
-    faltam="$(trava "${1:?uso: producao.sh trava <tag> <sha>}" "${2:?uso: producao.sh trava <tag> <sha>}")"
-    [[ -z "$faltam" ]] || die "release com issue \`critico\` sem o «Aceite» do mentor; o dono pode forçar pelo Run workflow, com o motivo"
+    faltam="$(trava "${1:?usage: producao.sh trava <tag> <sha>}" "${2:?usage: producao.sh trava <tag> <sha>}")"
+    [[ -z "$faltam" ]] || die "a release with a \`critico\` issue without the mentor's «Aceite»; the owner can force it through Run workflow, with the reason"
     ;;
-  forcar) forcar "${1:?uso: producao.sh forcar <tag> <sha> <motivo>}" "${2:?uso: producao.sh forcar <tag> <sha> <motivo>}" "${3-}" ;;
+  forcar) forcar "${1:?usage: producao.sh forcar <tag> <sha> <reason>}" "${2:?usage: producao.sh forcar <tag> <sha> <reason>}" "${3-}" ;;
   *) sed -n '2,12p' "$0"; exit 1 ;;
 esac

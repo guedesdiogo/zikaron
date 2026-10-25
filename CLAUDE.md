@@ -1,28 +1,31 @@
-# Zikaron: instruções para agentes de código
+# Zikaron: instructions for coding agents
 
-O Zikaron é o servidor de memória compartilhada do Diogo: um Worker no Cloudflare, único escritor de um cofre Markdown num repo privado do GitHub, servido por MCP e por uma API HTTP pequena a vários clientes (Hermes, o Mac do Diogo, o Kelpie depois). O Obsidian chega pelo git e pelo webhook de push, sem API. O plano da v1 é o [Epic 1](https://github.com/guedesdiogo/zikaron/issues/1).
+Zikaron is Diogo's shared memory server: a Worker on Cloudflare, the single writer of a Markdown vault in a private GitHub repo, served over MCP and a small HTTP API to several clients (Hermes, Diogo's Mac, later Kelpie). Obsidian reaches it through git and the push webhook, with no API. The v1 plan is [Epic 1](https://github.com/guedesdiogo/zikaron/issues/1).
 
-Projeto: `guedesdiogo/5`
+Project: `guedesdiogo/5`
 
-## Idioma
+## Language
 
-- Prosa em pt-BR: docs, ADRs, issues, PRs, commits e comentários de código novo.
-- O código portado do Kelpie fica com os comentários em inglês, como na origem. Identificadores em inglês.
+Language: en (owner's decision of 2026-10-25: public repos under `guedesdiogo` are written in English unless Diogo asks otherwise).
 
-## Fluxo
+- All prose in English: docs, ADRs, issues, PRs, commits and code comments. Identifiers in English.
+- The prumo protocol markers stay as the tooling reads them: the «**Revisão**» comment with `Resultado:` and `Pendentes:`, «**Aceite** ·», and the `run-name` «Produção vX.Y.Z» of `producao.yml`.
+- Test fixtures may hold Portuguese text: the search, merge and summary tests exercise it.
 
-Vale o padrão prumo, com estas particularidades:
+## Flow
 
-- **Registro:** o [Project Zikaron](https://github.com/users/guedesdiogo/projects/5). Títulos `[Epic N]`, `[Story N.M]`, `[Task N.M.K]`, `[Follow-up N.M]`; labels `tipo:*`, `epic:N`, `seguranca`, `critico`, `merge:manual`.
-- **Plano na issue,** nas sete seções (Contexto, Objetivo, Fora de escopo, Plano, Critérios de aceite, Verificação prevista, Riscos e rollback).
-- **PR:** uma linha `Closes #N` por issue e a seção «Verificação» (residuais primeiro, o que rodou com números, o que não rodou e por quê, risco, como desfazer). A mesma Verificação vai comentada na issue.
-- **Commits** convencionais, citando `issue #N` sem palavra-chave.
-- **Merge** squash, pelas condições do prumo, depois da revisão (`/prumo:revisar`) aprovada na issue.
-- **Decisões** em `docs/adr/`. Mudar uma decisão aceita pede um ADR novo.
+The prumo standard applies, with these particulars:
+
+- **Record:** the [Zikaron Project](https://github.com/users/guedesdiogo/projects/5). Titles `[Epic N]`, `[Story N.M]`, `[Task N.M.K]`, `[Follow-up N.M]`; labels `tipo:*`, `epic:N`, `seguranca`, `critico`, `merge:manual`.
+- **Plan in the issue,** in the seven sections (Context, Objective, Out of scope, Plan, Acceptance criteria, Expected verification, Risks and rollback).
+- **PR:** one `Closes #N` line per issue and the «Verification» section (residuals first, what ran with numbers, what did not run and why, risk, how to undo). The same Verification is commented on the issue.
+- **Commits** conventional, citing `issue #N` without a keyword.
+- **Merge** squash, under the prumo conditions, after the review (`/prumo:revisar`) is approved on the issue.
+- **Decisions** in `docs/adr/`. Changing an accepted decision takes a new ADR.
 
 ## Gates
 
-Rodam na CI (`.github/workflows/ci.yml`, job `CI passed`) e localmente:
+They run in CI (`.github/workflows/ci.yml`, job `CI passed`) and locally:
 
 ```bash
 bun install --frozen-lockfile
@@ -31,30 +34,30 @@ bun run typecheck
 bun run test:coverage
 ```
 
-- Cada workspace mantém ao menos 80% de statements, branches, functions e lines (o piso vem do Kelpie).
-- Os testes rodam no workerd (`@cloudflare/vitest-plugin`), para o índice usar o SQLite e o FTS5 de verdade.
-- Toda regra de confiança (identidade, gravação, leitura, contaminação, cercado) tem teste.
+- Each workspace keeps at least 80% of statements, branches, functions and lines (the floor comes from Kelpie).
+- The tests run in workerd (`@cloudflare/vitest-plugin`), so the index uses the real SQLite and FTS5.
+- Every trust rule (identity, write, read, taint, fence) has a test.
 
-## Limites
+## Limits
 
-- **A CI roda só em runners do GitHub.** O repo é público: nada de runner self-hosted, nada de `pull_request_target`, `permissions` mínimas e ações fixadas por SHA.
-- **O `kelpie-vault` só é tocado na Story 1.9,** depois de o Diogo parar o context-store do Kelpie. Até lá, só o cofre de teste.
-- **Só dados sintéticos fora da produção:** testes, fixtures, o cofre de teste, issues e PRs. Nenhum dado pessoal em logs, issues, PRs ou commits.
-- **Logs só com contagens e códigos,** nunca texto, título ou caminho de nota.
-- **Segredos nunca passam pelo chat** nem pelo contexto do agente. O gerado por máquina vai por pipeline (`openssl rand -base64 32 | wrangler secret put NOME`); o de terceiro (a chave do GitHub App, o token do Cloudflare), pelo `prumo-segredos`.
-- **Nenhum identificador de infraestrutura no repo:** IPs, ids de instância, contas, zonas, handles de bot.
-- **Deploy só pela CI.** Produção só por release, por ordem do Diogo.
-- **O servidor nunca faz force-push** e nunca reescreve o histórico do cofre. Apagar de verdade é do Diogo, à mão.
+- **CI runs only on GitHub runners.** The repo is public: no self-hosted runner, no `pull_request_target`, minimal `permissions` and actions pinned by SHA.
+- **The `kelpie-vault` is touched only in Story 1.9,** after Diogo stops Kelpie's context-store. Until then, only the test vault.
+- **Only synthetic data outside production:** tests, fixtures, the test vault, issues and PRs. No personal data in logs, issues, PRs or commits.
+- **Logs carry only counts and codes,** never a note's text, title or path.
+- **Secrets never go through the chat** or the agent's context. A machine-generated one goes through a pipeline (`openssl rand -base64 32 | wrangler secret put NAME`); a third-party one (the GitHub App key, the Cloudflare token) through `prumo-secrets`.
+- **No infrastructure identifier in the repo:** IPs, instance ids, accounts, zones, bot handles.
+- **Deploy only through CI.** Production only by release, on Diogo's order.
+- **The server never force-pushes** and never rewrites the vault's history. Truly deleting is Diogo's job, by hand.
 
-## Onde está o quê
+## Where things are
 
-- `docs/adr/`: decisões. O [ADR-0001](docs/adr/0001-identidade-e-confianca.md) é o modelo de confiança; o [ADR-0002](docs/adr/0002-extracao-do-kelpie.md) diz o que veio do Kelpie.
-- `packages/memory`: formato, índice e busca (do Kelpie).
-- `packages/vault`: o backend do GitHub (do Kelpie).
-- `apps/server`: o Worker e o Durable Object escritor único.
+- `docs/adr/`: decisions. [ADR-0001](docs/adr/0001-identidade-e-confianca.md) is the trust model; [ADR-0002](docs/adr/0002-extracao-do-kelpie.md) says what came from Kelpie.
+- `packages/memory`: format, index and search (from Kelpie).
+- `packages/vault`: the GitHub backend (from Kelpie).
+- `apps/server`: the Worker and the single-writer Durable Object.
 
-## Projetos de referência
+## Reference projects
 
-- [Kelpie](https://github.com/guedesdiogo/kelpie) em `f033cf3`: a origem do código. `docs/memory-format.md` e os ADRs 0005, 0016, 0020 e 0021 dele explicam o desenho.
-- [ai-memory](https://github.com/akitaonrails/ai-memory) (MIT): o modelo do formato e da busca. Arquivos traduzidos dele levam o aviso.
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent): o cliente principal; o contrato do provedor de memória está em `website/docs/developer-guide/memory-provider-plugin.md`.
+- [Kelpie](https://github.com/guedesdiogo/kelpie) at `f033cf3`: the origin of the code. Its `docs/memory-format.md` and ADRs 0005, 0016, 0020 and 0021 explain the design.
+- [ai-memory](https://github.com/akitaonrails/ai-memory) (MIT): the model for the format and the search. Files translated from it carry the notice.
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent): the main client; the memory provider contract is in `website/docs/developer-guide/memory-provider-plugin.md`.

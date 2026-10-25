@@ -1,14 +1,14 @@
 name: Staging
 
-# Publica o zikaron-staging depois que o CI passa num push na main (Story 1.8), pelo deploy.yml, que
-# confere o /health no fim. O que barra um PR, de fork ou não, é o `if` do job: só um push deste
-# repositório. O environment `staging` só aceita a main, mas num workflow_run o ref é sempre a
-# branch padrão, então ele não é a barreira.
+# Publishes zikaron-staging after CI passes on a push to main (Story 1.8), through deploy.yml, which
+# checks /health at the end. What stops a PR, from a fork or not, is the job's `if`: only a push to
+# this repository. The `staging` environment only accepts main, but in a workflow_run the ref is
+# always the default branch, so it is not the barrier.
 #
-# O repo é público e o log de cada passo mostra o bloco `env:`: tudo o que identifica a conta, o
-# Access, os clientes ou o endereço do Worker é segredo do environment, que o log mascara, e o
-# deploy.yml mascara o STAGING_URL antes de o wrangler imprimi-lo. Os segredos vão por nome: dentro
-# do job do deploy.yml, que declara o environment, vale o valor do environment.
+# The repo is public and the log of every step shows the `env:` block: everything that identifies
+# the account, Access, the clients or the Worker's address is an environment secret, which the log
+# masks, and deploy.yml masks STAGING_URL before wrangler prints it. The secrets go by name: inside
+# the deploy.yml job, which declares the environment, the environment's value applies.
 on:
   workflow_run:
     workflows: [CI]
@@ -18,14 +18,14 @@ on:
 permissions:
   contents: read
 
-# Não `deploy-staging`: é o grupo do job do deploy.yml.
+# Not `deploy-staging`: that is the group of the deploy.yml job.
 concurrency:
   group: staging
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy do staging
+    name: Staging deploy
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
@@ -33,7 +33,7 @@ jobs:
     uses: ./.github/workflows/deploy.yml
     with:
       environment: staging
-      # O commit que o CI conferiu; num workflow_run, o github.sha é a ponta da main.
+      # The commit CI checked; in a workflow_run, github.sha is the tip of main.
       ref: ${{ github.event.workflow_run.head_sha }}
     secrets:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

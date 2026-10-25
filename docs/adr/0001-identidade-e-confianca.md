@@ -1,154 +1,154 @@
-# ADR-0001: A identidade vem da credencial, a confiança vem do canal, e o servidor aplica as regras
+# ADR-0001: Identity comes from the credential, trust comes from the channel, and the server enforces the rules
 
-- Estado: Aceito
-- Data: 2026-10-24
+- Status: Accepted
+- Date: 2026-10-24
 - Issue: [#1](https://github.com/guedesdiogo/zikaron/issues/1)
-- Aceito pelo Diogo na conversa de 2026-10-24 (as respostas estão citadas no #1)
-- Emendado por: [ADR-0003](0003-corrija-pela-palavra-do-dono.md), uma nota do dono muda pela palavra do dono, também pelo provedor
+- Accepted by Diogo in the conversation of 2026-10-24 (the answers are quoted in #1)
+- Amended by: [ADR-0003](0003-corrija-pela-palavra-do-dono.md), an owner's note changes on the owner's word, through the provider as well
 
-## Contexto
+## Context
 
-Vários clientes gravam e leem a mesma memória: o Noah (assistente pessoal, lê Gmail e páginas de fora), o Alan (abre e digita em sessões do Claude Code), o Mac do Diogo (sessões do Claude Code) e, depois, o Kelpie. O Diogo edita o cofre no Obsidian.
+Several clients write and read the same memory: Noah (personal assistant, reads Gmail and outside pages), Alan (opens and types in Claude Code sessions), Diogo's Mac (Claude Code sessions) and, later, Kelpie. Diogo edits the vault in Obsidian.
 
-As regras do Diogo (entrevista de 2026-10-24, no #1):
-- **Q3:** o que o Diogo disse entra sozinho; o que um agente deduziu, ou leu num e-mail, página ou documento, só entra com o «sim» dele, e até lá fica marcado como inferido; rotinas agendadas nunca gravam.
-- **Q24:** a regra de recall vale por identidade, e quem aplica é o servidor, não a persona. Cada agente recebe o que o Diogo disse ou editou e as notas próprias; o Alan nunca recebe notas do Noah vindas de e-mail ou página, nem as que o Noah deduziu; o Noah recebe as do Alan.
+Diogo's rules (interview of 2026-10-24, in #1):
+- **Q3:** what Diogo said goes in on its own; what an agent deduced, or read in an email, page or document, goes in only with Diogo's "yes", and until then it stays marked as inferred; scheduled routines never write.
+- **Q24:** the recall rule applies per identity, and the server enforces it, not the persona. Each agent receives what Diogo said or edited and its own notes; Alan never receives Noah's notes that came from an email or page, nor the ones Noah deduced; Noah receives Alan's.
 
-O motivo do Q24: o Noah lê conteúdo de fora, e o Alan digita em sessões que tomam o texto dele como se fosse do Diogo. Uma memória plantada por e-mail no Noah que chegasse ao Alan viraria uma ordem do Diogo numa sessão com terminal.
+The reason for Q24: Noah reads outside content, and Alan types in sessions that take its text as if it were Diogo's. A memory planted in Noah by email that reached Alan would become an order from Diogo in a session with a terminal.
 
-O que não ajuda:
-- **O Hermes não protege a memória sozinho.** O recall não é sanitizado e os provedores gravam sem aprovação (issues 136997 e 67546 de `NousResearch/hermes-agent`, abertas em 2026-10-24).
-- **A injeção por e-mail existe de verdade.** O MemGhost (arXiv 2607.05189, julho de 2026) planta memória com um único e-mail, e o artigo diz que funciona no Hermes.
-- **No Cloudflare não há uid Unix.** Cada cliente precisa de uma credencial própria.
-- **A credencial de um agente está ao alcance do próprio agente.** O terminal do Noah lê o `.env` dele («Known limits» do `profiles/README.md` do `hermes-agents`). Uma gravação por `curl` com essa credencial é igual a uma chamada do provedor.
+What does not help:
+- **Hermes does not protect the memory on its own.** Recall is not sanitized and providers write without approval (issues 136997 and 67546 of `NousResearch/hermes-agent`, open on 2026-10-24).
+- **Injection by email is real.** MemGhost (arXiv 2607.05189, July 2026) plants memory with a single email, and the paper says it works on Hermes.
+- **On Cloudflare there is no Unix uid.** Each client needs its own credential.
+- **An agent's credential is within the agent's own reach.** Noah's terminal reads its `.env` ("Known limits" in the `profiles/README.md` of `hermes-agents`). A write by `curl` with that credential is the same as a provider call.
 
-## Decisão
+## Decision
 
-### 1. A identidade vem da credencial
+### 1. Identity comes from the credential
 
-- **O Cloudflare Access fica na frente do Worker,** com um service token por cliente.
-- **O Worker valida o `Cf-Access-Jwt-Assertion` em todo pedido,** mesmo com o Access na frente: a assinatura, pelas chaves públicas do time no Access; o `aud` da aplicação; o `iss` e a validade. Depois mapeia o `common_name` do token (o Client ID do service token) para um cliente da configuração do deploy.
-- **Sem JWT válido, ou com um cliente fora da configuração, a resposta é 401,** e nada é lido nem gravado.
-- **O cliente nunca diz quem é.** Nenhum campo do pedido escolhe o cliente, o escopo `agent/<cliente>` ou o `origin.client`.
-- **O webhook do GitHub fica num caminho fora do Access,** conferido pelo HMAC do segredo do webhook, e só dispara uma sincronização: não lê nem grava nada pedido no corpo.
-- **A configuração de cada cliente** fica no deploy, fora do repo, e diz:
-  - `name`: o nome do cliente (`noah`, `alan`, `mac`…), que nomeia o escopo `agent/<name>`;
-  - `exposed`: o cliente lê conteúdo de fora;
-  - `privileged`: o cliente age com a autoridade do Diogo;
-  - `ownerClaims`: o que ele grava como dito pelo Diogo vale como do Diogo para os outros clientes.
+- **Cloudflare Access sits in front of the Worker,** with one service token per client.
+- **The Worker validates `Cf-Access-Jwt-Assertion` on every request,** even with Access in front: the signature, against the team's public keys in Access; the application's `aud`; the `iss` and the validity. Then it maps the token's `common_name` (the service token's Client ID) to a client in the deploy configuration.
+- **Without a valid JWT, or with a client outside the configuration, the answer is 401,** and nothing is read or written.
+- **The client never says who it is.** No field of the request picks the client, the `agent/<client>` scope or `origin.client`.
+- **The GitHub webhook lives on a path outside Access,** checked by the HMAC of the webhook secret, and only triggers a sync: it neither reads nor writes anything the body asks for.
+- **Each client's configuration** lives in the deploy, outside the repo, and says:
+  - `name`: the client's name (`noah`, `alan`, `mac`…), which names the `agent/<name>` scope;
+  - `exposed`: the client reads outside content;
+  - `privileged`: the client acts with Diogo's authority;
+  - `ownerClaims`: what it writes as said by Diogo counts as Diogo's for the other clients.
 
-### 2. A confiança vem do canal
+### 2. Trust comes from the channel
 
-Uma credencial por agente não prova «dito pelo Diogo». Por isso a confiança de uma nota vem do canal por onde ela entrou:
+One credential per agent does not prove "said by Diogo". So a note's trust comes from the channel it came in through:
 
-1. **Canal do dono:** um commit no cofre que não foi o servidor que fez (Obsidian, GitHub, qualquer editor). O servidor sabe o que gravou porque guarda o SHA de cada blob que escreveu, como o `authored` do Kelpie; um blob que ele não escreveu é do dono, chegue pelo commit que chegar.
-2. **Canal do provedor** (`/v1/*`): o provedor do Hermes grava o que o Diogo disse com a evidência, o id da mensagem do usuário que ele vê no `sync_turn`.
-3. **Canal de ferramenta** (`/mcp`): tudo o que o modelo chama.
+1. **Owner channel:** a commit to the vault that the server did not make (Obsidian, GitHub, any editor). The server knows what it wrote because it keeps the SHA of every blob it wrote, like Kelpie's `authored`; a blob it did not write is the owner's, whatever commit it arrives in.
+2. **Provider channel** (`/v1/*`): the Hermes provider writes what Diogo said with the evidence, the id of the user message it sees in `sync_turn`.
+3. **Tool channel** (`/mcp`): everything the model calls.
 
-O canal é um teto, não uma prova: a mesma credencial alcança os dois endpoints. Por isso o `ownerClaims` é por cliente, e não por endpoint.
+The channel is a ceiling, not a proof: the same credential reaches both endpoints. That is why `ownerClaims` is per client, not per endpoint.
 
-### 3. A proveniência é do servidor
+### 3. Provenance belongs to the server
 
-Cada versão que o servidor grava leva no frontmatter um bloco `origin`, preenchido só por ele:
+Every version the server writes carries an `origin` block in the frontmatter, filled only by the server:
 
 ```yaml
 origin:
-  client: noah            # da credencial
+  client: noah            # from the credential
   channel: provider       # provider | tool
   source: owner           # owner | agent | external
-  evidence: "telegram:msg/123"   # opcional: o id da mensagem ou a referência da fonte
-  review: pending         # presente enquanto espera o «sim»
-  taint: inherited        # presente quando a versão herdou a contaminação da anterior
+  evidence: "telegram:msg/123"   # optional: the message id or the source reference
+  review: pending         # present while it waits for the "yes"
+  taint: inherited        # present when the version inherited the previous one's taint
 ```
 
-O que o pedido pode dizer e o servidor limita:
-- `source` vem do cliente, com teto pelo canal: pelo canal de ferramenta, `owner` vira `agent`.
-- `level` (`explicit`, `deduced`, `inferred`, do Kelpie) acompanha o `source`: só `owner` pelo provedor pode ser `explicit`.
-- `evidence` é guardada como veio, uma linha, sem segredos.
+What the request may say and the server caps:
+- `source` comes from the client, capped by the channel: through the tool channel, `owner` becomes `agent`.
+- `level` (`explicit`, `deduced`, `inferred`, from Kelpie) follows `source`: only `owner` through the provider can be `explicit`.
+- `evidence` is kept as it came, one line, without secrets.
 
-**A confiança de uma versão é calculada na leitura,** a partir do `origin`, de quem escreveu o blob e da configuração atual do cliente. Assim, desligar o `ownerClaims` de um cliente vale na hora, sem reescrever o cofre. Uma versão **vale como do Diogo** quando:
-- o blob é do dono, não tem `review: pending` e o `origin`, se havia, pôde ser lido (uma nota que o Diogo escreveu, ou uma nota pendente que ele confirmou tirando o `review`; uma edição que quebra o bloco não confirma nada); ou
-- o blob é do servidor, com `source: owner`, `channel: provider`, e o cliente que gravou tem `ownerClaims`.
+**A version's trust is computed at read time,** from the `origin`, from who wrote the blob and from the client's current configuration. That way, turning off a client's `ownerClaims` takes effect at once, without rewriting the vault. A version **counts as Diogo's** when:
+- the blob is the owner's, has no `review: pending`, and the `origin`, if there was one, could be read (a note Diogo wrote, or a pending note Diogo confirmed by removing the `review`; an edit that breaks the block confirms nothing); or
+- the blob is the server's, with `source: owner`, `channel: provider`, and the client that wrote it has `ownerClaims`.
 
-### 4. A regra de gravação (Q3)
+### 4. The write rule (Q3)
 
-- `source: owner` pelo canal do provedor, de um cliente com `ownerClaims`, entra direto, com `level: explicit` e a evidência. De um cliente sem `ownerClaims`, entra com `review: pending` e `level: inferred`, como uma conclusão: a palavra dele não vale como do Diogo, e o «sim» no cofre é o que a confirma.
-- `agent` e `external` entram com `review: pending` e `level: inferred`. O «sim» do Diogo é tirar o `review: pending` no cofre (Obsidian ou GitHub). Uma página de confirmação atrás do Access, com o login dele, fica para depois.
-- **Rotinas agendadas não gravam.** Uma gravação, um arquivamento ou um «esqueça» com `context: cron` é recusado sem commit. Quem marca o contexto é o provedor ou o cliente MCP; o servidor recusa. A regra é dos clientes. A rotina diária do próprio servidor (#17) só faz o que o Q5 pede: arquiva as tarefas encerradas, levando a origem delas sem mudança, e escreve o relatório; não grava conteúdo novo, e uma nota do Diogo nunca é arquivada por ela.
-- **Nenhum agente reescreve** uma nota que vale como do Diogo, uma nota do núcleo (pinned, ou em `profile/`) ou uma nota arquivada. A exceção, só para a nota do Diogo, é a palavra do próprio Diogo pelo provedor ([ADR-0003](0003-corrija-pela-palavra-do-dono.md)). São as regras guedesdiogo/kelpie#149 e guedesdiogo/kelpie#168, agora pelo servidor.
-- **«Esqueça» vindo de um agente** só alcança as notas do próprio cliente e as pendentes. Uma nota do Diogo sai pelo cofre. O git guarda tudo.
-- **Nenhum agente pina uma nota.** O `pinned` só vem do cofre.
+- `source: owner` through the provider channel, from a client with `ownerClaims`, goes in directly, with `level: explicit` and the evidence. From a client without `ownerClaims`, it goes in with `review: pending` and `level: inferred`, like a conclusion: its word does not count as Diogo's, and the "yes" in the vault is what confirms it.
+- `agent` and `external` go in with `review: pending` and `level: inferred`. Diogo's "yes" is removing the `review: pending` in the vault (Obsidian or GitHub). A confirmation page behind Access, with Diogo's login, is left for later.
+- **Scheduled routines do not write.** A write, an archive or a "forget" with `context: cron` is refused without a commit. The provider or the MCP client marks the context; the server refuses. The rule is about the clients. The server's own daily routine (#17) does only what Q5 asks: it archives the closed tasks, carrying their origin unchanged, and writes the report; it writes no new content, and it never archives a note of Diogo's.
+- **No agent rewrites** a note that counts as Diogo's, a core note (pinned, or in `profile/`) or an archived note. The exception, only for Diogo's note, is Diogo's own word through the provider ([ADR-0003](0003-corrija-pela-palavra-do-dono.md)). These are the rules guedesdiogo/kelpie#149 and guedesdiogo/kelpie#168, now enforced by the server.
+- **"Forget" from an agent** reaches only the client's own notes and the pending ones. A note of Diogo's leaves through the vault. Git keeps everything.
+- **No agent pins a note.** `pinned` only comes from the vault.
 
-### 5. A regra de leitura (Q24) e a contaminação
+### 5. The read rule (Q24) and taint
 
-Uma versão é **contaminada** quando não vale como do Diogo e:
-- o `source` é `external`; ou
-- quem gravou é um cliente `exposed`, ou um cliente que não está na configuração: a lista é de permissão, para que tirar um cliente comprometido da configuração não limpe a marca das notas dele; ou
-- tem `taint: inherited`; ou
-- tem um `origin` que não pôde ser lido (um bloco quebrado, ou um frontmatter ignorado que tinha `origin`).
+A version is **tainted** when it does not count as Diogo's and:
+- the `source` is `external`; or
+- the writer is an `exposed` client, or a client that is not in the configuration: the list is an allowlist, so that removing a compromised client from the configuration does not clear the mark on its notes; or
+- it has `taint: inherited`; or
+- it has an `origin` that could not be read (a broken block, or an ignored frontmatter that had an `origin`).
 
-**A marca acompanha a nota.** Quando um cliente grava por cima de uma nota cuja versão atual está contaminada, o servidor põe `taint: inherited` na nova versão. Só o canal do dono tira a marca. Um resultado futuro que combine notas (os resumos e os merges do Dream) herda a marca de qualquer nota que leu.
+**The mark follows the note.** When a client writes over a note whose current version is tainted, the server puts `taint: inherited` on the new version. Only the owner channel removes the mark. A future result that combines notes (Dream's summaries and merges) inherits the mark of any note it read.
 
-**Um cliente `privileged` nunca recebe uma nota contaminada,** em nenhum caminho:
-- o recall e o núcleo;
-- a busca e a leitura por caminho;
-- os vizinhos do grafo e os links resolvidos de uma nota;
-- as listas (pendentes, arquivadas).
+**A `privileged` client never receives a tainted note,** on any path:
+- the recall and the core;
+- the search and the read by path;
+- a note's graph neighbors and resolved links;
+- the lists (pending, archived).
 
-Para ele, a nota contaminada responde como inexistente, com a mesma resposta de uma nota que não existe, e não pode ser gravada por cima. Isso vale também para as notas dele: um cliente `privileged` que grava algo lido de fora só o recebe de volta depois do «sim». É a leitura mais estrita do Q24, cujo motivo é que nada lido de fora chegue como ordem às sessões do Alan.
+For it, the tainted note answers as nonexistent, with the same answer as a note that does not exist, and cannot be written over. This also applies to its own notes: a `privileged` client that writes something read from outside only gets it back after the "yes". It is the strictest reading of Q24, whose reason is that nothing read from outside reaches Alan's sessions as an order.
 
-O que cada cliente recebe:
+What each client receives:
 
-| Cliente | Recebe |
+| Client | Receives |
 |---|---|
-| `exposed` (o Noah) | tudo, inclusive as notas do Alan e as contaminadas |
-| `privileged` (o Alan, o Mac) | o que vale como do Diogo e as notas não contaminadas, as próprias e as de quem não é `exposed` |
-| nenhum dos dois | o que vale como do Diogo, as notas próprias e as de quem não é `exposed` |
+| `exposed` (Noah) | everything, including Alan's notes and the tainted ones |
+| `privileged` (Alan, the Mac) | what counts as Diogo's and the untainted notes, its own and those of clients that are not `exposed` |
+| neither | what counts as Diogo's, its own notes and those of clients that are not `exposed` |
 
-### 6. O que o recall entrega é dado, não instrução
+### 6. What the recall delivers is data, not instruction
 
-O recall e o núcleo saem com o cercado do Kelpie (`docs/memory-format.md`, «Packing»):
-- as tags do bloco levam um id aleatório, novo a cada bloco, e o cabeçalho de cada nota leva o mesmo id;
-- `<memory` é escapado dentro das notas, e título e caminho ocupam uma linha só;
-- cada nota diz a origem e se está pendente;
-- o bloco diz que é referência, não instrução.
+The recall and the core go out inside Kelpie's fence (`docs/memory-format.md`, "Packing"):
+- the block's tags carry a random id, new for every block, and each note's header carries the same id;
+- `<memory` is escaped inside the notes, and title and path take a single line;
+- each note states its origin and whether it is pending;
+- the block says it is reference, not instruction.
 
-### 7. A configuração de partida
+### 7. The starting configuration
 
-Decisão do Diogo em 2026-10-24 sobre o Q24 («Sim, já vale»):
+Diogo's decision of 2026-10-24 on Q24 («Sim, já vale», "Yes, it applies now"):
 
-| Cliente | `exposed` | `privileged` | `ownerClaims` |
+| Client | `exposed` | `privileged` | `ownerClaims` |
 |---|---|---|---|
-| `noah` | sim | não | **sim** |
-| `alan` | não | sim | não |
-| `mac` | não | sim | não |
+| `noah` | yes | no | **yes** |
+| `alan` | no | yes | no |
+| `mac` | no | yes | no |
 
-O Noah começa com `ownerClaims`, mesmo com a credencial ao alcance do terminal dele: o que ele grava como dito pelo Diogo, com a evidência, vale para o Alan desde já.
+Noah starts with `ownerClaims`, even with the credential within reach of its terminal: what it writes as said by Diogo, with the evidence, counts for Alan from now on.
 
-## Consequências
+## Consequences
 
-- **O cofre só pode ter um escritor automático: o Zikaron.** Os commits de outro servidor no mesmo cofre, como o context-store do Kelpie, contariam como do dono. Por isso o Zikaron só entra num cofre depois que o outro escritor parar (Story 1.9 do #1).
-- **O canal do dono é tão forte quanto quem pode dar push no cofre.** Uma credencial do GitHub do Diogo numa máquina onde um agente tem terminal vira «edição do Diogo». O relatório diário lista as notas que mudaram; fechar essas credenciais é trabalho do `hermes-agents`.
-- **O `ownerClaims` do Noah é um risco aceito.** Um Noah induzido por um e-mail pode gravar algo como dito pelo Diogo, com um id de mensagem forjado, e o Alan recebe. O que reduz o risco:
-  - a evidência fica na nota;
-  - o relatório diário lista as notas `owner` gravadas pelo provedor;
-  - desligar o `ownerClaims` é uma linha de configuração e vale na hora.
+- **The vault can have only one automatic writer: Zikaron.** Commits from another server to the same vault, like Kelpie's context-store, would count as the owner's. So Zikaron only takes over a vault after the other writer stops (Story 1.9 of #1).
+- **The owner channel is as strong as whoever can push to the vault.** A GitHub credential of Diogo's on a machine where an agent has a terminal becomes "Diogo's edit". The daily report lists the notes that changed; closing off those credentials is work for `hermes-agents`.
+- **Noah's `ownerClaims` is an accepted risk.** A Noah induced by an email can write something as said by Diogo, with a forged message id, and Alan receives it. What reduces the risk:
+  - the evidence stays in the note;
+  - the daily report lists the `owner` notes written through the provider;
+  - turning off `ownerClaims` is one line of configuration and takes effect at once.
 
-  Ele cai quando a credencial do Noah sair do alcance do terminal dele.
-- **O Diogo cuida da borda:** a aplicação do Access, um service token por cliente e a entrega de cada segredo ao seu cliente. Os segredos nunca passam pelo chat.
-- **Uma edição acidental no Obsidian não confirma uma nota pendente:** só tirar o `review: pending` confirma.
-- **As regras valem para qualquer cliente novo** pela configuração dele, sem mudança de código.
+  It goes away when Noah's credential leaves the reach of its terminal.
+- **Diogo takes care of the edge:** the Access application, one service token per client and handing each secret to its client. Secrets never go through the chat.
+- **An accidental edit in Obsidian does not confirm a pending note:** only removing the `review: pending` confirms it.
+- **The rules apply to any new client** through its configuration, with no code change.
 
-## Alternativas consideradas
+## Alternatives considered
 
-- **Um token bearer por cliente, guardado com hash no Worker,** como faz o ai-memory. Mais simples, mas perde a camada de borda (um pedido sem token nem chega ao Worker) e a rotação e expiração pelo painel.
-- **OAuth 2.1 do MCP.** Os clientes do Hermes e do Claude Code têm suporte desigual, e um agente não tem quem faça o login interativo.
-- **Confiar no `level` que o agente declara,** como o Kelpie v1. O rótulo é do próprio modelo: uma instrução injetada consegue declarar `explicit` (guedesdiogo/kelpie#149).
-- **Aplicar a regra do Q24 na persona ou no provedor.** É exatamente o que o Diogo descartou: quem aplica é o servidor.
+- **One bearer token per client, stored hashed in the Worker,** as ai-memory does. Simpler, but it loses the edge layer (a request without a token never reaches the Worker) and rotation and expiry from the dashboard.
+- **MCP's OAuth 2.1.** The Hermes and Claude Code clients have uneven support, and an agent has no one to do the interactive login.
+- **Trusting the `level` the agent declares,** like Kelpie v1. The label is the model's own: an injected instruction can declare `explicit` (guedesdiogo/kelpie#149).
+- **Enforcing the Q24 rule in the persona or the provider.** That is exactly what Diogo ruled out: the server enforces it.
 
-## Referências
+## References
 
-- [#1](https://github.com/guedesdiogo/zikaron/issues/1): o plano e as decisões do Diogo.
-- ADRs 0005, 0016, 0020 e 0021 do [Kelpie](https://github.com/guedesdiogo/kelpie/tree/f033cf3/docs/adr) e o `docs/memory-format.md` dele.
-- Cloudflare Access: [validar o JWT](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/) e os [campos do token de aplicação](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/application-token/) (`common_name` é o Client ID do service token).
+- [#1](https://github.com/guedesdiogo/zikaron/issues/1): the plan and Diogo's decisions.
+- ADRs 0005, 0016, 0020 and 0021 of [Kelpie](https://github.com/guedesdiogo/kelpie/tree/f033cf3/docs/adr) and its `docs/memory-format.md`.
+- Cloudflare Access: [validating the JWT](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/) and the [application token fields](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/application-token/) (`common_name` is the service token's Client ID).
 - MemGhost, arXiv 2607.05189.

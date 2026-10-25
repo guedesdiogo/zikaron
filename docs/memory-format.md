@@ -1,6 +1,6 @@
 # Memory format
 
-> **Origem.** Esta especificação veio do Kelpie em [`f033cf3`](https://github.com/guedesdiogo/kelpie/blob/f033cf3/docs/memory-format.md), em inglês, como o código que ela descreve. Onde ela diz «Kelpie», leia o servidor que escreve no cofre; os links relativos apontam para o repo do Kelpie. O que o Zikaron muda está no [ADR-0001](adr/0001-identidade-e-confianca.md), no [ADR-0002](adr/0002-extracao-do-kelpie.md) e entra aqui pela Story 1.3 do #1.
+> **Origin.** This specification came from Kelpie at [`f033cf3`](https://github.com/guedesdiogo/kelpie/blob/f033cf3/docs/memory-format.md), in English, like the code it describes. Where it says "Kelpie", read the server that writes to the vault; relative links point to Kelpie's repo. What Zikaron changes is in [ADR-0001](adr/0001-identidade-e-confianca.md) and [ADR-0002](adr/0002-extracao-do-kelpie.md), and comes in here through Story 1.3 of #1.
 
 Kelpie's memory lives in the owner's vault: Markdown files in a private git repository ([ADR-0016](https://github.com/guedesdiogo/kelpie/blob/f033cf3/docs/adr/0016-vault-second-brain.md)), in a format of Kelpie's own ([ADR-0020](https://github.com/guedesdiogo/kelpie/blob/f033cf3/docs/adr/0020-shared-memory-engine.md)). This page is the spec for that format and for the index Kelpie derives from it. The code is in [`packages/memory`](https://github.com/guedesdiogo/kelpie/tree/f033cf3/packages/memory).
 
@@ -605,88 +605,88 @@ Before a new memory is written, `decideWrite` says whether it is news (#111). A 
   - a scope that is the turn's, never a model's choice;
   - on `UPDATE` and `SUPERSEDE`, the note's `pinned` and `evergreen` carried over. The rule's `NOOP` compares title, body and validity only.
 
-## Zikaron: origem, tipos novos e arquivo
+## Zikaron: origin, new kinds and the archive
 
-O que o Zikaron acrescenta ao formato (#6), além do que vem do Kelpie acima.
+What Zikaron adds to the format (#6), on top of what comes from Kelpie above.
 
-### O bloco `origin`
+### The `origin` block
 
-A proveniência de cada versão que o servidor grava ([ADR-0001](adr/0001-identidade-e-confianca.md) §3). Só o servidor o escreve.
+The provenance of every version the server writes ([ADR-0001](adr/0001-identidade-e-confianca.md) §3). Only the server writes it.
 
 ```yaml
 origin:
-  client: noah            # o cliente da credencial; nomeia o escopo agent/<cliente>
+  client: noah            # the credential's client; names the agent/<client> scope
   channel: provider       # provider | tool
   source: owner           # owner | agent | external
-  evidence: "telegram:msg/123"   # opcional, uma linha de até 300 caracteres
-  review: pending         # opcional: espera o «sim» do dono
-  taint: inherited        # opcional: gravada por cima de uma versão contaminada
+  evidence: "telegram:msg/123"   # optional, one line of up to 300 characters
+  review: pending         # optional: waits for the owner's "yes"
+  taint: inherited        # optional: written over a tainted version
 ```
 
-- **O vocabulário é fechado.** Uma chave desconhecida, um valor fora da lista, um `client` fora do padrão (minúsculas, dígitos e hífen, até 40) ou uma evidência com quebra de linha invalidam o bloco inteiro, com aviso. A nota continua indexada.
-- **O índice guarda o bloco em colunas** (`origin_client`, `origin_channel`, `origin_source`, `origin_evidence`, `origin_review`, `origin_taint`), para as regras de leitura do ADR-0001 virarem SQL, e `origin_invalid` quando havia um `origin` que não pôde ser lido: um bloco quebrado, ou um frontmatter ignorado inteiro com uma linha `origin:`. Uma versão assim nunca vale como do dono (schema 5).
-- **O arquivo não decide a confiança sozinho:** quem escreveu o blob conta mais que o bloco (ADR-0001 §3).
+- **The vocabulary is closed.** An unknown key, a value outside the list, a `client` outside the pattern (lowercase, digits and hyphen, up to 40) or an evidence with a line break invalidates the whole block, with a warning. The note stays indexed.
+- **The index keeps the block in columns** (`origin_client`, `origin_channel`, `origin_source`, `origin_evidence`, `origin_review`, `origin_taint`), so the read rules of ADR-0001 become SQL, and `origin_invalid` when there was an `origin` that could not be read: a broken block, or a whole ignored frontmatter with an `origin:` line. Such a version never counts as the owner's (schema 5).
+- **The file does not decide trust on its own:** who wrote the blob counts more than the block (ADR-0001 §3).
 
-### A linha de origem
+### The origin line
 
-Cada nota que o recall, o núcleo, a busca, a leitura ou a lista de pendentes mostram diz de onde veio, na linha logo abaixo do cabeçalho, ou na linha do que ela é ([ADR-0001](adr/0001-identidade-e-confianca.md) §6):
+Every note that the recall, the core, the search, the read or the pending list shows says where it came from, on the line right below the heading, or on the line that says what it is ([ADR-0001](adr/0001-identidade-e-confianca.md) §6):
 
-- `origem: dono`, quando a versão vale como do dono, pela configuração atual dos clientes;
-- `origem: <cliente>, conclusão|de fora|diz ser do dono[, pendente][, contaminação herdada]`, quando não vale;
-- `origem: desconhecida`, para uma versão do servidor sem o bloco `origin`.
+- `origin: owner`, when the version counts as the owner's, under the clients' current configuration;
+- `origin: <client>, conclusion|from outside|claims to be the owner's[, pending][, inherited taint]`, when it does not;
+- `origin: unknown`, for a server version without the `origin` block.
 
-A linha só leva vocabulário fechado e o nome do cliente; a evidência, texto livre, fica de fora. Ela entra na conta do orçamento do recall e do núcleo, que continua valendo por construção.
+The line carries only closed vocabulary and the client's name; the evidence, free text, stays out. It counts toward the recall and core budget, which still holds by construction.
 
-### Tipos novos
+### New kinds
 
-| Tipo | Pasta | Tier padrão | Campos próprios |
+| Kind | Folder | Default tier | Own fields |
 |---|---|---|---|
-| `task`: pendência sem hora | `tasks/` | episodic | `status: open\|done` |
-| `document`: um documento guardado por nome, link e assunto | `documents/` | semantic | `link`, obrigatório |
-| `delegation`: o que está com o Alan | `delegations/` | episodic | `status: open\|done` |
+| `task`: a to-do with no time | `tasks/` | episodic | `status: open\|done` |
+| `document`: a document kept by name, link and subject | `documents/` | semantic | `link`, required |
+| `delegation`: what is with Alan | `delegations/` | episodic | `status: open\|done` |
 
-- **`status`** só vale em `task` e `delegation`, e **`link`** só em `document`. O escritor os recusa nos outros tipos. Neles, uma chave `status` ou `link` é do dono: o leitor não a lê e o escritor não a apaga.
-- **`link`** é uma URL http(s), sem espaços, controles nem marcas bidirecionais, de até 2.000 caracteres. Um `document` sem ela é recusado pelo escritor; o leitor o indexa com um aviso.
-- **O corpo de um `document` é o assunto,** até 2.000 caracteres, nunca o conteúdo: a verdade é o Drive ou o Gmail.
-- **`commitment`** continua, para o contexto de um evento cuja verdade é a Agenda.
+- **`status`** only applies to `task` and `delegation`, and **`link`** only to `document`. The writer refuses them on the other kinds. On those, a `status` or `link` key is the owner's: the reader does not read it and the writer does not erase it.
+- **`link`** is an http(s) URL, without spaces, controls or bidirectional marks, of up to 2,000 characters. A `document` without it is refused by the writer; the reader indexes it with a warning.
+- **A `document`'s body is the subject,** up to 2,000 characters, never the content: the truth is Drive or Gmail.
+- **`commitment`** stays, for the context of an event whose truth is the Calendar.
 
-### O arquivo
+### The archive
 
-`archived: true` arquiva a nota: «arquivados devem ser acessados apenas quando solicitado diretamente» (o Diogo, Q5).
-- **Sai de:** a busca por texto, por título, por entidade e por vetor; os vizinhos do grafo (a nota arquivada também não tem vizinhos); o núcleo, mesmo pinned; os jobs do ciclo de vida.
-- **Também no passado:** uma busca com `asOf` deixa de fora a nota arquivada hoje, como uma marca de merge é lida como está hoje.
-- **Continua em:** o mesmo caminho e a mesma cadeia de versões; a leitura pelo caminho; a resolução de links, para um link não passar a apontar para um homônimo; uma busca, ou os vizinhos de uma nota, que peçam `includeArchived`.
-- **Dito de novo:** um fato igual a uma nota arquivada não é «já na memória»; vira uma nota nova, viva, num caminho numerado.
-- **Por que uma flag e não uma pasta:** mover o arquivo mudaria o caminho, e o caminho é a identidade da nota.
-- **Uma nova versão leva o que a anterior tinha:** como `pinned` e `evergreen`, quem grava por cima de uma nota lê a versão atual e repassa `status`, `link`, `archived` e `origin`. O escritor trata a entrada como a versão inteira e apaga o que ela deixa de fora. Quem grava calcula também o `taint: inherited` (ADR-0001 §5).
-- **O schema do índice passou para 4:** um índice de antes recomeça vazio e se refaz do cofre.
+`archived: true` archives the note: «arquivados devem ser acessados apenas quando solicitado diretamente», "archived ones should be accessed only when asked for directly" (Diogo, Q5).
+- **It leaves:** search by text, by title, by entity and by vector; the graph neighbors (an archived note has no neighbors either); the core, even when pinned; the lifecycle jobs.
+- **In the past too:** a search with `asOf` leaves out the note archived today, just as a merge mark is read as it is today.
+- **It stays in:** the same path and the same chain of versions; the read by path; link resolution, so a link does not start pointing at a namesake; a search, or a note's neighbors, that ask for `includeArchived`.
+- **Said again:** a fact equal to an archived note is not "already in the memory"; it becomes a new, live note, at a numbered path.
+- **Why a flag and not a folder:** moving the file would change the path, and the path is the note's identity.
+- **A new version carries what the previous one had:** like `pinned` and `evergreen`, whoever writes over a note reads the current version and passes on `status`, `link`, `archived` and `origin`. The writer treats the input as the whole version and erases what it leaves out. The writer also computes `taint: inherited` (ADR-0001 §5).
+- **The index schema went to 4:** an index from before starts over empty and rebuilds from the vault.
 
-### A rotina diária
+### The daily routine
 
-O ciclo de vida do Zikaron (#17) toma o lugar do [relatório diário](#the-daily-report) do Kelpie. Uma vez por dia, o alarme do cofre roda a rotina, depois do trabalho do GitHub. Ela arquiva as tarefas encerradas e escreve o relatório. Não chama modelo e nunca apaga uma nota.
-- **Quem grava é o próprio servidor:** o cliente `zikaron`, que nenhum cliente da configuração pode ter. A rotina usa a fila de sempre, e o commit leva o trailer `Zikaron-Client: zikaron`.
-- **O arquivo das tarefas** (o Q5): cada `task` e `delegation` atual com `status: done`, ou cuja data passou de 90 dias, ganha uma versão com `archived: true`.
-  - A data é o `valid_from`, senão quando a nota foi escrita, como no `writtenAt` do Kelpie.
-  - A nova versão leva tudo o mais, como o `memory_archive`. O `origin` da versão anterior vai como está: arquivar não lava a contaminação nem a põe, e a confiança calculada na leitura não muda.
-  - Só se arquiva uma versão que o servidor escreveu e que não vale como do dono. A tarefa do dono fica como está e vai para «Tarefas do dono para arquivar». Isso vale para uma que o dono editou, para uma «dita pelo dono» que vale como dele e para um merge com as linhas do dono.
-  - Desarquivar é tirar o `archived` no cofre. A versão passa a ser do dono, e a rotina só a lista, sem arquivá-la de novo.
-  - Nunca se arquiva uma nota que o núcleo de algum cliente carrega.
-  - Uma tarefa com gravação na fila, ou retida com marcadores de conflito, espera o dia seguinte.
-  - Uma edição do dono que chega enquanto o arquivo espera o commit ganha inteira, sem merge nem conflito.
-  - O commit diz «Arquiva tarefas encerradas» e não nomeia nota.
-- **O relatório,** em `memory/_lint/report.md`, fora do índice, em pt-BR e só com links. Valem as regras do Kelpie para títulos, caminhos e o tamanho das listas. As seções:
-  - **Notas do dono que um cliente mudou:** as versões que um commit do servidor substituiu ou removeu na última semana, com quem mudou. Contam as que valiam como do dono, pela configuração atual dos clientes, e as que guardavam as linhas do dono num merge. Conta também o commit cuja resposta se perdeu. O próprio relatório não conta.
-  - **Ditas pelo dono, pelo provedor:** o que o servidor gravou com `source: owner` pelo provedor na última semana, por cliente. É o risco do `ownerClaims` (ADR-0001 e ADR-0003). A evidência fica na nota, nunca no relatório. O arquivo da rotina, que leva o `origin` adiante, não conta como gravação nova.
-  - **Esperam o «sim»:** as notas com `review: pending`, pelo cliente da origem.
-  - **Tarefas arquivadas:** o que a rotina arquivou na última semana, enquanto o cofre guarda a versão que ela deixou.
-  - **Tarefas do dono para arquivar.**
-  - **Notas frias e duplicadas,** como no Kelpie. Sem vetores, não há a lista de contradições. Fria é uma nota episódica (uma sessão, um evento, uma tarefa) antiga: o Zikaron ainda não conta quem relembra uma nota.
-- **Os mesmos achados escrevem a mesma página,** sem hora: um dia sem novidade não faz commit, e sem achados a página sai.
-  - Uma tarefa que a rotina acaba de pôr na fila já conta como arquivada.
-  - Num dia de arquivo, o relatório vai no mesmo commit.
-- **Uma falha** deixa no log só o nome do erro, e a rotina espera o dia seguinte. As gravações dos clientes já saíram no mesmo alarme, antes dela.
-  - Sem a configuração dos clientes, nada se arquiva, e o relatório sai assim mesmo.
-  - O «esqueça» do dono (`forget`) tira o relatório da fila, e a rotina roda de novo no próximo alarme.
+Zikaron's lifecycle (#17) takes the place of Kelpie's [daily report](#the-daily-report). Once a day, the vault's alarm runs the routine, after GitHub's work. It archives the closed tasks and writes the report. It calls no model and never deletes a note.
+- **The server itself writes:** the `zikaron` client, which no client in the configuration can have. The routine uses the usual queue, and the commit carries the `Zikaron-Client: zikaron` trailer.
+- **The task archive** (Q5): every current `task` and `delegation` with `status: done`, or whose date is more than 90 days past, gets a version with `archived: true`.
+  - The date is the `valid_from`, else when the note was written, as in Kelpie's `writtenAt`.
+  - The new version carries everything else, like `memory_archive`. The previous version's `origin` goes as it is: archiving neither washes the taint off nor adds it, and the trust computed at read time does not change.
+  - Only a version the server wrote and that does not count as the owner's is archived. The owner's task stays as it is and goes to "The owner's tasks to archive". That holds for one the owner edited, for one "said by the owner" that counts as the owner's, and for a merge with the owner's lines.
+  - Unarchiving is removing the `archived` in the vault. The version becomes the owner's, and the routine only lists it, without archiving it again.
+  - A note that some client's core carries is never archived.
+  - A task with a queued write, or held with conflict markers, waits for the next day.
+  - An owner's edit that arrives while the archive waits for the commit wins whole, with no merge or conflict.
+  - The commit says "Archive closed tasks" and names no note.
+- **The report,** at `memory/_lint/report.md`, outside the index, in English and with links only. Kelpie's rules for titles, paths and list sizes apply. The sections:
+  - **The owner's notes a client changed:** the versions a server commit replaced or removed in the last week, with who changed them. The ones that counted as the owner's, under the clients' current configuration, count, and so do the ones that kept the owner's lines in a merge. A commit whose answer was lost counts too. The report itself does not count.
+  - **Said by the owner, through the provider:** what the server wrote with `source: owner` through the provider in the last week, by client. It is the `ownerClaims` risk (ADR-0001 and ADR-0003). The evidence stays in the note, never in the report. The routine's archive, which carries the `origin` forward, does not count as a new write.
+  - **Waiting for the "yes":** the notes with `review: pending`, by the origin's client.
+  - **Archived tasks:** what the routine archived in the last week, while the vault keeps the version it left.
+  - **The owner's tasks to archive.**
+  - **Cold notes and duplicates,** as in Kelpie. Without vectors, there is no list of contradictions. Cold is an old episodic note (a session, an event, a task): Zikaron does not yet count who recalls a note.
+- **The same findings write the same page,** without a time: a day without news makes no commit, and without findings the page goes away.
+  - A task the routine has just queued already counts as archived.
+  - On an archive day, the report goes in the same commit.
+- **A failure** leaves only the error's name in the log, and the routine waits for the next day. The clients' writes already went out in the same alarm, before it.
+  - Without the clients' configuration, nothing is archived, and the report goes out anyway.
+  - The owner's "forget" (`forget`) takes the report off the queue, and the routine runs again on the next alarm.
 
 ## Credits
 

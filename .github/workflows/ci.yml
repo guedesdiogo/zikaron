@@ -12,11 +12,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# O repo é público: todo job roda em runners do GitHub, sem segredos e sem pull_request_target, para
-# que um PR de fork nunca rode numa máquina nossa nem leia um segredo (CLAUDE.md, «Limites»).
+# The repo is public: every job runs on GitHub runners, with no secrets and no pull_request_target,
+# so a fork's PR never runs on a machine of ours or reads a secret (CLAUDE.md, "Limits").
 jobs:
   checks:
-    name: Lint, typecheck e testes
+    name: Lint, typecheck and tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -26,18 +26,18 @@ jobs:
       - uses: ./.github/actions/setup
       - run: bun run lint
       - run: bun run typecheck
-      # Os testes, uma vez, com cobertura: cada workspace falha abaixo do piso dele.
+      # The tests, once, with coverage: each workspace fails below its own floor.
       - run: bun run test:coverage
 
   workflows:
-    name: Lint dos workflows
+    name: Workflow lint
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # O actionlint roda o shellcheck, que já vem no runner, em cada bloco run:.
+      # actionlint runs shellcheck, which the runner already has, on every run: block.
       - name: actionlint
         env:
           VERSION: 1.7.12
@@ -49,7 +49,7 @@ jobs:
           "$RUNNER_TEMP/actionlint" -color
 
   dependency-review:
-    name: Revisão de dependências
+    name: Dependency review
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -61,7 +61,7 @@ jobs:
         with:
           fail-on-severity: high
 
-  # O único check que o ruleset da main exige: um gate novo não muda o ruleset.
+  # The only check the main ruleset requires: a new gate does not change the ruleset.
   ci-passed:
     name: CI passed
     if: always()
@@ -69,8 +69,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      # Todo gate passa; só a revisão de dependências pode pular, fora de um PR.
-      - name: Todos os gates passaram
+      # Every gate passes; only the dependency review may skip, outside a PR.
+      - name: All gates passed
         env:
           NEEDS: ${{ toJSON(needs) }}
           EVENT: ${{ github.event_name }}
