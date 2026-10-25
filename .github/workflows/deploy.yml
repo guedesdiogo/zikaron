@@ -94,12 +94,16 @@ jobs:
             exit 0
           fi
           url=${WORKER_URL%/}
-          if ! [[ "$url" =~ ^https://[a-z0-9.-]+$ ]]; then
-            echo "O segredo $URL_NOME do environment $DEPLOY_ENV falta ou não é https://<host>, sem caminho: nada foi publicado, para o endereço não sair sem máscara no log (docs/$DEPLOY_ENV.md)." >&2
+          # O endereço tem de ser exatamente o que o wrangler vai imprimir, ou a máscara não pega.
+          worker=zikaron
+          if [ "$DEPLOY_ENV" = staging ]; then worker=zikaron-staging; fi
+          if ! [[ "$url" =~ ^https://${worker}\.([a-z0-9-]+)\.workers\.dev$ ]]; then
+            echo "O segredo $URL_NOME do environment $DEPLOY_ENV falta ou não é https://$worker.<subdomínio>.workers.dev: nada foi publicado, para o endereço não sair sem máscara no log (docs/$DEPLOY_ENV.md)." >&2
             exit 1
           fi
           echo "::add-mask::$url"
           echo "::add-mask::${url#https://}"
+          echo "::add-mask::${BASH_REMATCH[1]}"
           echo "publica=true" >>"$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.pronto.outputs.publica == 'true'
@@ -128,7 +132,16 @@ jobs:
           for name in GITHUB_APP_ID GITHUB_INSTALLATION_ID VAULT_REPOSITORY ACCESS_TEAM_DOMAIN ACCESS_AUD ZIKARON_CLIENTS; do
             if [ -n "${!name}" ]; then args+=(--var "$name:${!name}"); fi
           done
-          ./node_modules/.bin/wrangler deploy --env "$DEPLOY_ENV" "${args[@]}"
+          # Num erro de autenticação, o wrangler imprime o e-mail e as contas que o token vê, sem
+          # máscara: a saída vai para um arquivo, e o log público só leva o código do erro.
+          log="$RUNNER_TEMP/wrangler.log"
+          if ./node_modules/.bin/wrangler deploy --env "$DEPLOY_ENV" "${args[@]}" >"$log" 2>&1; then
+            cat "$log"
+          else
+            code=$(grep -oE '\[code: [0-9]+\]' "$log" | head -1 || true)
+            echo "O wrangler deploy falhou ${code:-sem código}; a saída dele fica fora do log público." >&2
+            exit 1
+          fi
       # O /health fica num bypass do Access (docs/staging.md e docs/producao.md).
       - name: Confere o /health
         if: steps.pronto.outputs.publica == 'true'

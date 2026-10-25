@@ -1,6 +1,8 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "zikaron",
+  // O nível de cima é só local (testes e `wrangler dev`): os Workers publicados são os do `env`.
+  // Um deploy ou um `secret put` sem `--env` vai para um Worker à parte, nunca para a produção.
+  "name": "zikaron-local",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },

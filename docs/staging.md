@@ -31,7 +31,7 @@ Os três clientes de teste em `ZIKARON_CLIENTS`: `noah` (`exposed`, `ownerClaims
 1. **Token da CI, conta e endereço:** `prumo-segredos aplicar` grava o `CLOUDFLARE_API_TOKEN`, o `CLOUDFLARE_ACCOUNT_ID` e o `STAGING_URL` (os outros nomes do manifesto podem esperar: o comando pede um de cada vez, e um Enter vazio pula). O subdomínio `workers.dev` da conta aparece em *Workers & Pages*, no painel.
 2. **GitHub App `zikaron`:**
    - criar em github.com/settings/apps/new, com o webhook desligado e as permissões de repositório *Contents: Read and write* e *Metadata: Read-only*;
-   - instalar só no cofre de teste;
+   - instalar só no cofre de teste, nunca no `kelpie-vault` (a produção tem um App próprio, `docs/producao.md`);
    - gravar o App ID e o installation ID como segredos (`prumo-segredos aplicar`).
 3. **Primeiro deploy:** um merge na `main` publica o Worker e confere o `/health`. Sem o App e o Access, o cofre fica desligado e toda rota além do `/health` e do webhook é recusada: 401, ou 500 sem a configuração dos clientes.
 4. **Chave do App no Worker,** num terminal, no diretório do repo:

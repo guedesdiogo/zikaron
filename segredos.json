@@ -159,7 +159,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://github.com/settings/apps",
-      "instrucao": "O App ID do GitHub App zikaron."
+      "instrucao": "O App ID do GitHub App de produção, zikaron-producao (nunca o zikaron do staging)."
     },
     {
       "nome": "ZIKARON_GITHUB_INSTALLATION_ID",
@@ -168,7 +168,7 @@
       "repo": "guedesdiogo/zikaron",
       "origem": "humano",
       "link": "https://github.com/settings/installations",
-      "instrucao": "O número no fim do endereço da instalação do App zikaron no kelpie-vault. Só depois de o context-store do Kelpie parar (docs/producao.md)."
+      "instrucao": "O número no fim do endereço da instalação do App zikaron-producao no kelpie-vault. Só depois de o context-store do Kelpie parar (docs/producao.md)."
     },
     {
       "nome": "ACCESS_TEAM_DOMAIN",

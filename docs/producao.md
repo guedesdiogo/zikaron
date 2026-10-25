@@ -8,7 +8,7 @@ O ADR-0001 admite um escritor automático por cofre. O context-store do Kelpie a
 
 1. O Diogo para o context-store do Kelpie, no Cloudflare.
 2. Ele confere que nenhum commit novo do bot do Kelpie aparece no `kelpie-vault`.
-3. Só então o GitHub App `zikaron` é instalado no `kelpie-vault`.
+3. Só então o GitHub App de produção, `zikaron-producao`, é instalado no `kelpie-vault`.
 
 Sem a instalação, o Worker de produção pode existir, mas com o cofre desligado.
 
@@ -20,13 +20,13 @@ Nenhum valor abaixo vai para o repo nem passa por um chat. O repo é público, e
 |---|---|---|
 | Segredo do environment `producao` | `CLOUDFLARE_API_TOKEN` | Um token próprio da produção, com as permissões do token do staging ([staging.md](staging.md)) |
 | Segredo | `CLOUDFLARE_ACCOUNT_ID` | A conta do Zikaron |
-| Segredo | `ZIKARON_GITHUB_APP_ID`, `ZIKARON_GITHUB_INSTALLATION_ID` | O App `zikaron` e a instalação dele no `kelpie-vault` |
+| Segredo | `ZIKARON_GITHUB_APP_ID`, `ZIKARON_GITHUB_INSTALLATION_ID` | O App `zikaron-producao` e a instalação dele no `kelpie-vault` |
 | Segredo | `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` | O time e a aplicação do Access do `zikaron` |
 | Segredo | `ZIKARON_CLIENTS` | O JSON dos clientes reais, `noah`, `alan` e `mac`, com as flags do [ADR-0001](adr/0001-identidade-e-confianca.md) §7 ([api.md](api.md#a-configuração-do-deploy)) |
 | Segredo | `PRODUCAO_URL` | `https://zikaron.<subdomínio>.workers.dev`, exatamente como o wrangler o imprime, sem barra no fim (detalhes abaixo) |
 | Variável do environment `producao` | `VAULT_REPOSITORY` | `guedesdiogo/kelpie-vault` |
 | Variáveis do repo | `PRUMO_DONOS`, `PRUMO_MENTOR` | Quem pede a produção e quem dá o «Aceite». As duas já existem |
-| Segredo do Worker `zikaron` | `GITHUB_APP_PRIVATE_KEY` | A chave do App, em PKCS#8 |
+| Segredo do Worker `zikaron` | `GITHUB_APP_PRIVATE_KEY` | A chave do App `zikaron-producao`, em PKCS#8 |
 | Segredo do Worker | `GITHUB_WEBHOOK_SECRET` | O segredo do webhook de push do `kelpie-vault` |
 
 **O `PRODUCAO_URL`** precisa existir antes da primeira release. Sem ele, o deploy falha antes de publicar, para o endereço não sair sem máscara no log.
@@ -43,7 +43,8 @@ Nenhum valor abaixo vai para o repo nem passa por um chat. O repo é público, e
 2. **Token, conta e endereço.** `prumo-segredos aplicar` grava o `CLOUDFLARE_API_TOKEN`, o `CLOUDFLARE_ACCOUNT_ID` e o `PRODUCAO_URL` do environment `producao`.
    - O subdomínio `workers.dev` da conta aparece em *Workers & Pages*, no painel.
    - A variável do cofre: `gh variable set VAULT_REPOSITORY --env producao --body guedesdiogo/kelpie-vault`.
-3. **GitHub App.** Instalar o `zikaron` no `kelpie-vault`, só depois do passo 1. Gravar o App ID e o installation ID como segredos (`prumo-segredos aplicar`).
+3. **GitHub App de produção.** Criar um App **à parte**, `zikaron-producao`, com as mesmas permissões do de staging (sem webhook, *Contents: Read and write*, *Metadata: Read-only*), e instalá-lo **só** no `kelpie-vault`, só depois do passo 1. Gravar o App ID e o installation ID como segredos (`prumo-segredos aplicar`).
+   - **Nunca instalar o App `zikaron` (o do staging) no `kelpie-vault`.** O staging publica a cada merge, sem trava nem «Aceite», e tem a chave desse App: com ele instalado no cofre real, o staging viraria um segundo escritor dele, o que o ADR-0001 proíbe.
 4. **Primeira release:** a `v0.1.0`, por ordem do Diogo (abaixo).
    - Ela publica o Worker e confere o `/health`.
    - Sem a chave do App, o cofre fica desligado.
@@ -101,6 +102,10 @@ Um run de produção sai por vez, e o que está rodando sempre termina.
 ## A trava do «Aceite»
 
 Uma issue com o label `critico` só vai para a produção com o «Aceite» do mentor (`PRUMO_MENTOR`, padrão `guedesdiogo`). O «Aceite» é um comentário dele na issue que começa com `**Aceite** ·`, por exemplo `**Aceite** · produção · <link>`.
+
+**Diferença em relação ao exemplo do prumo:** lá, uma issue fechada por um PR que o mentor abriu conta como aceita. Aqui todo PR sai da conta do mentor, inclusive os que um agente abre, então essa exceção foi tirada: só o comentário vale. Pelo mesmo motivo, um agente nunca escreve o «Aceite», mesmo tendo a conta: ele é do Diogo, depois de conferir no staging.
+
+**Recomendado:** um *required reviewer* (o Diogo) no environment `producao`, em Settings › Environments. Ele põe um clique humano antes de cada deploy de produção, e também barra uma tag `v*` criada num commit que não passou pela revisão: numa release, o workflow roda os arquivos do próprio commit da tag.
 
 - **O intervalo** vai da tag que está em produção (o nome do último run verde, «Produção vX.Y.Z») até o commit da tag nova. Um run que parou não conta como produção: a issue continua parando as releases seguintes.
 - **Entram as issues** que os PRs do intervalo fecham. Conta como aceita a issue cujo PR o próprio mentor abriu.

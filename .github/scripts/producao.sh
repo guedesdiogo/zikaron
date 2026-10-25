@@ -95,12 +95,13 @@ aceite() {
     tail -n 1
 }
 
-# As issues `critico` sem «Aceite», uma por linha: repo<TAB>número<TAB>título. Uma issue fechada por
-# um PR que o mentor abriu conta como aceita: ele mesmo a abriu.
+# As issues `critico` sem «Aceite», uma por linha: repo<TAB>número<TAB>título. Neste repo, todo PR
+# sai da conta do mentor, inclusive os que um agente abre: um PR aberto por ela não conta como
+# aceite. Só o comentário «Aceite» vale (diferença em relação ao exemplo do prumo).
 criticas_sem_aceite() {
-  jq -r --arg mentor "$MENTOR" '
-    [.[] | .autor as $autor | .issues[] | select(.critico) | . + {autor: $autor}]
-    | group_by(.repo, .numero)[] | select(all(.autor != $mentor)) | .[0]
+  jq -r '
+    [.[] | .issues[] | select(.critico)]
+    | group_by(.repo, .numero)[] | .[0]
     | [.repo, (.numero | tostring), .titulo] | @tsv' <<<"$1" |
     while IFS=$'\t' read -r repo numero titulo; do
       if [[ -z "$(aceite "$repo" "$numero")" ]]; then printf '%s\t%s\t%s\n' "$repo" "$numero" "$titulo"; fi
@@ -122,12 +123,12 @@ notas() {
   if jq -e '[.[].issues[] | select(.critico)] | length > 0' <<<"$dados" >/dev/null; then
     echo
     echo "## Aceite do mentor"
-    jq -r --arg mentor "$MENTOR" '
-      [.[] | .pr as $pr | .autor as $autor | .issues[] | select(.critico) | . + {pr: $pr, autor: $autor}]
+    jq -r '
+      [.[].issues[] | select(.critico)]
       | group_by(.repo, .numero)[]
-      | [.[0].repo, (.[0].numero | tostring), ([.[] | select(.autor == $mentor) | .pr] | first // "" | tostring)] | @tsv' <<<"$dados" |
-      while IFS=$'\t' read -r repo numero pr_mentor; do
-        if [[ -n "$pr_mentor" ]]; then ref="PR #$pr_mentor aberto pelo mentor"; else ref="$(aceite "$repo" "$numero")"; fi
+      | [.[0].repo, (.[0].numero | tostring)] | @tsv' <<<"$dados" |
+      while IFS=$'\t' read -r repo numero; do
+        ref="$(aceite "$repo" "$numero")"
         echo "- $repo#$numero: ${ref:-falta (o deploy de produção para)}"
       done
   fi
